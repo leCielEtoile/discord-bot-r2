@@ -1,0 +1,14 @@
+{
+  "DISCORD_TOKEN": "your-discord-bot-token",
+  "ADMIN_ROLE": "Admin",
+  "ALLOWED_ROLE": "Uploader",
+  "ALLOWED_GUILD_ID": 123456789012345678,
+
+  "R2_BUCKET": "your-r2-bucket-name",
+  "R2_ENDPOINT": "https://<account-id>.r2.cloudflarestorage.com",
+  "R2_ACCESS_KEY": "your-access-key",
+  "R2_SECRET_KEY": "your-secret-key",
+  "R2_PUBLIC_URL": "https://files.example.com",
+
+  "DEFAULT_UPLOAD_LIMIT": 5
+}

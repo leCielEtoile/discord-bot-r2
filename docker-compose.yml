@@ -1,0 +1,8 @@
+services:
+  discord-bot:
+    build: .
+    container_name: discord-bot
+    volumes:
+      - ./db.sqlite3:/app/db.sqlite3
+      - ./config.json:/app/config.json:ro
+    restart: unless-stopped
