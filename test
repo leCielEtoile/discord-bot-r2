@@ -1,0 +1,21 @@
+# Discord APIライブラリ
+discord.py>=2.3.0
+
+# CloudflareのR2を操作するためのS3互換クライアント
+boto3>=1.28.0
+botocore>=1.31.0
+
+# 定期タスク用スケジューラライブラリ
+APScheduler>=3.10.0
+
+# タイムゾーン処理
+pytz>=2023.3
+
+# YAML設定ファイル対応
+PyYAML>=6.0
+
+# 開発/テスト環境用
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+black>=23.7.0
+flake8>=6.1.0

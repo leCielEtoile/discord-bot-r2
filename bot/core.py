@@ -1,7 +1,8 @@
 """
 core.py
 
-Discord Bot の初期化・起動処理（discord.Client ベース）
+Discord Bot の初期化・起動処理
+依存性注入パターンを用いてサービスを初期化
 """
 
 import discord
@@ -9,54 +10,116 @@ from discord import app_commands
 import asyncio
 import signal
 import logging
+import os
 
-from bot.commands import register_commands
-from bot.scheduler import start_scheduler
-from bot.db import init_db
-from bot.config import TOKEN
+from bot.commands.admin_commands import setup_admin_commands
+from bot.commands.upload_command import UploadCommand
+from bot.commands.file_commands import setup_file_commands
+from bot.impl.r2_service import R2StorageService
+from bot.impl.sqlite_service import SQLiteDatabaseService
+from bot.scheduler import Scheduler
+from bot.logging_config import setup_logging
+from bot.config import (
+    TOKEN, R2_BUCKET, R2_ENDPOINT, 
+    R2_ACCESS_KEY, R2_SECRET_KEY, R2_PUBLIC_URL
+)
 
 # ロガー設定
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
-)
 logger = logging.getLogger(__name__)
 
-# メンバー情報取得のためのインテント設定
-intents = discord.Intents.default()
-intents.members = True
-
-# クライアントインスタンス生成（Bot用）
-client = discord.Client(intents=intents)
-tree = app_commands.CommandTree(client)
+class DiscordBot:
+    """Discord Botのメインクラス"""
+    
+    def __init__(self):
+        """Botと各サービスを初期化"""
+        # メンバー情報取得のためのインテント設定
+        intents = discord.Intents.default()
+        intents.members = True
+        
+        # クライアントインスタンス生成
+        self.client = discord.Client(intents=intents)
+        self.tree = app_commands.CommandTree(self.client)
+        
+        # データベースパスを環境変数から取得（デフォルトは/app/data/db.sqlite3）
+        db_path = os.getenv("DB_PATH", "/app/data/db.sqlite3")
+        
+        # サービス初期化
+        self.db_service = SQLiteDatabaseService(db_path=db_path)
+        self.storage_service = R2StorageService(
+            bucket=R2_BUCKET,
+            endpoint=R2_ENDPOINT,
+            access_key=R2_ACCESS_KEY,
+            secret_key=R2_SECRET_KEY,
+            public_url=R2_PUBLIC_URL
+        )
+        
+        # スケジューラ初期化
+        self.scheduler = Scheduler(self.db_service, self.storage_service)
+        
+        # クライアントイベント登録
+        self._register_events()
+        
+    def _register_events(self):
+        """クライアントのイベントハンドラを登録"""
+        @self.client.event
+        async def on_ready():
+            # コマンド登録
+            await self._register_commands()
+            
+            # コマンドツリー同期
+            await self.tree.sync()
+            logger.info(f"Bot logged in as {self.client.user}")
+            
+            # スケジューラ起動
+            self.scheduler.start()
+    
+    async def _register_commands(self):
+        """全コマンドを登録（非同期）"""
+        # 管理者コマンド
+        setup_admin_commands(self.tree, self.db_service)
+        
+        # アップロードコマンド
+        upload_cmd = UploadCommand(self.storage_service, self.db_service)
+        await upload_cmd.register(self.tree)
+        
+        # ファイル操作コマンド
+        setup_file_commands(self.tree, self.db_service, self.storage_service)
+        
+        logger.info("All commands registered")
+    
+    async def _shutdown(self):
+        """シャットダウン処理"""
+        logger.info("シャットダウン処理中...")
+        self.scheduler.stop()
+        await self.client.close()
+        logger.info("Bot切断完了")
+    
+    def _handle_exit(self, *_):
+        """シグナルハンドラ"""
+        asyncio.create_task(self._shutdown())
+    
+    def run(self):
+        """Botを起動"""
+        # シグナルハンドラ登録
+        signal.signal(signal.SIGTERM, self._handle_exit)
+        signal.signal(signal.SIGINT, self._handle_exit)
+        
+        logger.info("Starting Discord bot...")
+        self.client.run(TOKEN)
 
 def run_bot():
     """
-    Bot を初期化して実行します（discord.Client ベース）。
-    - DB 初期化
-    - スラッシュコマンド登録
-    - イベントハンドラ登録
-    - スケジューラ起動
+    Botを初期化して実行
     """
-    init_db()
-    register_commands(tree)
-
-    @client.event
-    async def on_ready():
-        await tree.sync()
-        logger.info(f"Bot logged in as {client.user}")
-        start_scheduler()
-
-    async def shutdown():
-        logger.info("シャットダウン処理中...")
-        await client.close()
-        logger.info("Bot切断完了")
-
-    def handle_exit(*_):
-        asyncio.create_task(shutdown())
-
-    # SIGTERM/SIGINT をトラップ
-    signal.signal(signal.SIGTERM, handle_exit)
-    signal.signal(signal.SIGINT, handle_exit)
-
-    client.run(TOKEN)
+    # ロギング設定
+    setup_logging()
+    
+    try:
+        # Bot初期化と実行
+        bot = DiscordBot()
+        bot.run()
+    except Exception as e:
+        logger.critical(f"Critical error: {e}", exc_info=True)
+        return 1
+    
+    return 0

@@ -1,19 +1,61 @@
-# Python
+# Python関連
 __pycache__/
-*.pyc
-*.pyo
-*.pyd
+*.py[cod]
+*$py.class
+*.so
+.Python
 env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 仮想環境
 venv/
-db.sqlite3
-config.json
+ENV/
+env/
 
-# VSCode
-.vscode/
-
-# Mac
-.DS_Store
-
-# Docker
+# ログとデータベース
+logs/
 *.log
-docker-compose.override.yml
+*.sqlite3
+*.db
+data/
+
+# 設定ファイル（例は含め、実際の設定は除外）
+config.json
+.env
+
+# OS固有のファイル
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# エディタ固有のファイル
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# 一時ファイル
+/tmp/
+.temp/
+.tmp/
+
+# Dockerの一時ファイル
+.docker/

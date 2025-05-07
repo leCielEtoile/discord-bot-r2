@@ -1,0 +1,45 @@
+# YouTube Downloader Discord Bot設定ファイル
+
+# Discord設定
+# ===========================================
+# Discord Botのトークン（必須）
+DISCORD_TOKEN: "your-discord-bot-token"
+
+# 管理者ロール名
+# このロールを持つユーザーは管理者コマンドを実行できます
+ADMIN_ROLE: "Admin"
+
+# アップロード許可ロール名
+# このロールを持つユーザーはアップロードコマンドを実行できます
+ALLOWED_ROLE: "Uploader"
+
+# 許可されたサーバーID
+# このBotが応答するDiscordサーバー（ギルド）のID
+ALLOWED_GUILD_ID: 123456789012345678
+
+
+# Cloudflare R2設定
+# ===========================================
+# R2バケット名（必須）
+R2_BUCKET: "your-r2-bucket-name"
+
+# R2エンドポイントURL（必須）
+# 例: https://<account-id>.r2.cloudflarestorage.com
+R2_ENDPOINT: "https://<account-id>.r2.cloudflarestorage.com"
+
+# R2アクセスキー（必須）
+R2_ACCESS_KEY: "your-access-key"
+
+# R2シークレットキー（必須）
+R2_SECRET_KEY: "your-secret-key"
+
+# ファイル公開URL（必須）
+# 例: https://files.example.com
+R2_PUBLIC_URL: "https://files.example.com"
+
+
+# Bot設定
+# ===========================================
+# デフォルトのアップロード上限
+# 各ユーザーが保存できるファイル数のデフォルト値（0は無制限）
+DEFAULT_UPLOAD_LIMIT: 5

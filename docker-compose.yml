@@ -1,8 +1,37 @@
 services:
   discord-bot:
-    build: .
-    container_name: discord-bot
-    volumes:
-      - ./db.sqlite3:/app/db.sqlite3
-      - ./config.json:/app/config.json:ro
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: discord-ytdl-bot
     restart: unless-stopped
+    volumes:
+      # 設定ファイル
+      - ./config.yaml:/app/config.yaml:ro
+      # データベース永続化
+      - ./data:/app/data
+      # ログ永続化
+      - ./logs:/app/logs
+    environment:
+      # 環境変数による設定上書き
+      # - DISCORD_TOKEN=your-token-here
+      # - R2_BUCKET=your-bucket
+      # - R2_ENDPOINT=your-endpoint
+      # - R2_ACCESS_KEY=your-access-key
+      # - R2_SECRET_KEY=your-secret-key
+      # - R2_PUBLIC_URL=your-public-url
+      # 設定ファイルパス
+      - CONFIG_PATH=/app/config.yaml
+      # ログレベル設定
+      - LOG_LEVEL=INFO
+      # データベースファイルパス
+      - DB_PATH=/app/data/db.sqlite3
+      # キャッシュディレクトリ
+      - XDG_CACHE_HOME=/app/data/cache
+    # ヘルスチェック
+    healthcheck:
+      test: ["CMD", "ps", "aux", "|", "grep", "python", "|", "grep", "-v", "grep"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
