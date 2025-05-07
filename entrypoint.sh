@@ -7,14 +7,16 @@ echo "==============================================="
 
 # yt-dlpのキャッシュディレクトリを設定
 export XDG_CACHE_HOME=/app/data/cache
-mkdir -p $XDG_CACHE_HOME
-chmod 777 $XDG_CACHE_HOME
+mkdir -p $XDG_CACHE_HOME 2>/dev/null || true
+# 権限変更は失敗しても続行
+chmod 777 $XDG_CACHE_HOME 2>/dev/null || echo "Note: Unable to chmod cache directory, using current permissions"
 
 # データベースディレクトリの確認と作成
 DB_DIR=$(dirname "${DB_PATH:-/app/data/db.sqlite3}")
 echo "Database path: ${DB_PATH:-/app/data/db.sqlite3}"
-mkdir -p "$DB_DIR"
-chmod 777 "$DB_DIR"
+mkdir -p "$DB_DIR" 2>/dev/null || true
+# 権限変更は失敗しても続行
+chmod 777 "$DB_DIR" 2>/dev/null || echo "Note: Unable to chmod database directory, using current permissions"
 
 # 設定ファイルの存在確認
 if [ ! -f "${CONFIG_PATH}" ]; then

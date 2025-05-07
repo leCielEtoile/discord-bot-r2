@@ -43,16 +43,9 @@ RUN chmod +x entrypoint.sh
 ENV CONFIG_PATH=/app/config.yaml
 ENV PYTHONPATH=/app
 
-# ログディレクトリとデータディレクトリを作成し、権限を設定
-RUN mkdir -p /app/logs /app/data
-
-# 非rootユーザーで実行
-RUN groupadd -r botuser && useradd -r -g botuser botuser
-# 所有権と権限を設定
-RUN chown -R botuser:botuser /app /app/logs /app/data && \
-    chmod -R 755 /app && \
-    chmod -R 777 /app/logs /app/data
-
-USER botuser
+# ログディレクトリとデータディレクトリを作成
+# 権限設定はdocker-compose.ymlのuserディレクティブで行う
+# これにより、ホスト側のユーザー権限で作成される
+RUN mkdir -p /app/logs /app/data /app/data/cache
 
 ENTRYPOINT ["./entrypoint.sh"]

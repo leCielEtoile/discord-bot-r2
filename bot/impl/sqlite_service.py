@@ -31,11 +31,21 @@ class SQLiteDatabaseService(DatabaseService):
             if db_path is None:
                 db_path = os.getenv("DB_PATH", "db.sqlite3")
             
-            # データベースファイルが存在するディレクトリが存在しない場合は作成
+            # データベースディレクトリの存在確認と作成試行
             db_dir = os.path.dirname(db_path)
             if db_dir and not os.path.exists(db_dir):
-                os.makedirs(db_dir, exist_ok=True)
-                logger.info(f"Created database directory: {db_dir}")
+                try:
+                    os.makedirs(db_dir, exist_ok=True)
+                    logger.info(f"Created database directory: {db_dir}")
+                except (OSError, PermissionError) as e:
+                    logger.warning(f"Could not create database directory: {e}")
+                    # エラーは無視して続行
+            
+            # ディレクトリが存在しない場合は代替のファイルパスを試みる
+            if db_dir and not os.path.exists(db_dir):
+                fallback_path = "db.sqlite3"  # カレントディレクトリに保存
+                logger.warning(f"Using fallback database path: {fallback_path}")
+                db_path = fallback_path
             
             self.conn = sqlite3.connect(
                 db_path, 
