@@ -30,8 +30,8 @@ ICONS = {
     "name": "📄"
 }
 
-# ページあたりの表示件数
-FILES_PER_PAGE = 5
+# ページあたりの表示件数（Discord UIの行制限に対応）
+FILES_PER_PAGE = 4  # 1行に2つのボタンなので4ファイル表示可能
 
 class UnifiedFileView(discord.ui.View):
     """
@@ -60,6 +60,20 @@ class UnifiedFileView(discord.ui.View):
         
         if not self.entries:
             return
+        
+        # 詳細表示と一覧表示で異なるページング計算
+        if self.view_mode == "detail":
+            # 詳細表示：1ファイルずつ表示
+            self.total_pages = len(self.entries)
+            # ページ範囲チェック
+            if self.page >= self.total_pages:
+                self.page = self.total_pages - 1
+        else:
+            # リスト表示：複数ファイルをページ分割
+            self.total_pages = max(1, math.ceil(self.total_entries / FILES_PER_PAGE))
+            # ページ範囲チェック
+            if self.page >= self.total_pages:
+                self.page = self.total_pages - 1
         
         # 表示モード切替ボタン
         mode_button = discord.ui.Button(
@@ -101,28 +115,28 @@ class UnifiedFileView(discord.ui.View):
             next_button.callback = self.next_page
             self.add_item(next_button)
         
-        # 現在のページの項目
-        start_idx = self.page * FILES_PER_PAGE
-        end_idx = min(start_idx + FILES_PER_PAGE, len(self.entries))
-        
         if self.view_mode == "list":
-            # リスト表示：各ファイルに再生・削除ボタン
+            # リスト表示の項目ボタン
+            start_idx = self.page * FILES_PER_PAGE
+            end_idx = min(start_idx + FILES_PER_PAGE, len(self.entries))
+            
+            # 1行に再生ボタンと削除ボタンを配置
             for i in range(start_idx, end_idx):
                 entry = self.entries[i]
-                row = 1 + (i - start_idx)
+                row = 1 + (i - start_idx)  # row 1, 2, 3, 4
                 
-                # 動画ファイルへのリンクボタン
+                # 動画ファイルへのリンクボタン（行の左側）
                 play_button = discord.ui.Button(
-                    label=f"{ICONS['play']} {entry.display_name[:30]}{'...' if len(entry.display_name) > 30 else ''}",
+                    label=f"{ICONS['play']} {entry.display_name[:25]}{'...' if len(entry.display_name) > 25 else ''}",
                     style=discord.ButtonStyle.primary,
                     row=row,
                     url=self.storage.generate_public_url(entry.r2_path)
                 )
                 self.add_item(play_button)
                 
-                # 削除ボタン
+                # 削除ボタン（行の右側）
                 delete_button = discord.ui.Button(
-                    label=f"{ICONS['delete']}",
+                    label=f"{ICONS['delete']} 削除",
                     style=discord.ButtonStyle.danger,
                     row=row,
                     custom_id=f"delete_{entry.filename}"
@@ -132,7 +146,7 @@ class UnifiedFileView(discord.ui.View):
         
         elif self.view_mode == "detail" and self.entries:
             # 詳細表示：現在のファイルのアクションボタン
-            current_entry = self.entries[start_idx]
+            current_entry = self.entries[self.page]
             
             # 公開URLボタン
             play_button = discord.ui.Button(
@@ -250,8 +264,9 @@ class UnifiedFileView(discord.ui.View):
                 color=discord.Color.light_grey()
             )
         
-        start_idx = self.page * FILES_PER_PAGE
-        entry = self.entries[start_idx]
+        # 詳細表示では1つのファイルを表示
+        current_index = self.page
+        entry = self.entries[current_index]
         
         created_at_str = entry.created_at.strftime("%Y年%m月%d日 %H:%M")
         
@@ -272,7 +287,7 @@ class UnifiedFileView(discord.ui.View):
             inline=True
         )
         
-        embed.set_footer(text=f"ページ {self.page + 1}/{self.total_pages} | ファイル {start_idx + 1}/{self.total_entries}")
+        embed.set_footer(text=f"ファイル {current_index + 1}/{len(self.entries)}")
         return embed
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
