@@ -31,21 +31,11 @@ class SQLiteDatabaseService(DatabaseService):
             if db_path is None:
                 db_path = os.getenv("DB_PATH", "db.sqlite3")
             
-            # データベースディレクトリの存在確認と作成試行
+            # データベースファイルが存在するディレクトリが存在しない場合は作成
             db_dir = os.path.dirname(db_path)
             if db_dir and not os.path.exists(db_dir):
-                try:
-                    os.makedirs(db_dir, exist_ok=True)
-                    logger.info(f"Created database directory: {db_dir}")
-                except (OSError, PermissionError) as e:
-                    logger.warning(f"Could not create database directory: {e}")
-                    # エラーは無視して続行
-            
-            # ディレクトリが存在しない場合は代替のファイルパスを試みる
-            if db_dir and not os.path.exists(db_dir):
-                fallback_path = "db.sqlite3"  # カレントディレクトリに保存
-                logger.warning(f"Using fallback database path: {fallback_path}")
-                db_path = fallback_path
+                os.makedirs(db_dir, exist_ok=True)
+                logger.info(f"Created database directory: {db_dir}")
             
             self.conn = sqlite3.connect(
                 db_path, 
@@ -250,36 +240,3 @@ class SQLiteDatabaseService(DatabaseService):
             logger.error(f"Delete upload failed: {e}")
             raise DatabaseError(f"アップロード記録の削除に失敗しました: {e}")
     
-    def delete_old_uploads(self, before_date: datetime) -> List[str]:
-        """
-        指定日時より古いアップロードを削除
-        
-        Args:
-            before_date: この日時より前の記録を削除
-            
-        Returns:
-            List[str]: 削除されたファイルのR2パスリスト
-            
-        Raises:
-            DatabaseError: 削除失敗時
-        """
-        try:
-            # 削除前に対象のR2パスを取得
-            self.cursor.execute(
-                "SELECT r2_path FROM uploads WHERE created_at < ?", 
-                (before_date.isoformat(),)
-            )
-            deleted_paths = [row[0] for row in self.cursor.fetchall()]
-            
-            # レコード削除
-            self.cursor.execute(
-                "DELETE FROM uploads WHERE created_at < ?", 
-                (before_date.isoformat(),)
-            )
-            self.conn.commit()
-            
-            logger.info(f"Deleted {len(deleted_paths)} old uploads before {before_date}")
-            return deleted_paths
-        except Exception as e:
-            logger.error(f"Delete old uploads failed: {e}")
-            raise DatabaseError(f"古いアップロード記録の削除に失敗しました: {e}")

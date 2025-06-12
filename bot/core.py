@@ -17,7 +17,6 @@ from bot.commands.upload_command import UploadCommand
 from bot.commands.file_commands import setup_file_commands
 from bot.impl.r2_service import R2StorageService
 from bot.impl.sqlite_service import SQLiteDatabaseService
-from bot.scheduler import Scheduler
 from bot.logging_config import setup_logging
 from bot.config import (
     TOKEN, R2_BUCKET, R2_ENDPOINT, 
@@ -53,9 +52,6 @@ class DiscordBot:
             public_url=R2_PUBLIC_URL
         )
         
-        # スケジューラ初期化
-        self.scheduler = Scheduler(self.db_service, self.storage_service)
-        
         # クライアントイベント登録
         self._register_events()
         
@@ -69,9 +65,6 @@ class DiscordBot:
             # コマンドツリー同期
             await self.tree.sync()
             logger.info(f"Bot logged in as {self.client.user}")
-            
-            # スケジューラ起動
-            self.scheduler.start()
     
     async def _register_commands(self):
         """全コマンドを登録（非同期）"""
@@ -90,7 +83,6 @@ class DiscordBot:
     async def _shutdown(self):
         """シャットダウン処理"""
         logger.info("シャットダウン処理中...")
-        self.scheduler.stop()
         await self.client.close()
         logger.info("Bot切断完了")
     

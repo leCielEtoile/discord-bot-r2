@@ -129,18 +129,3 @@ class DatabaseService(ABC):
         """
         pass
         
-    @abstractmethod
-    def delete_old_uploads(self, before_date: datetime) -> List[str]:
-        """
-        指定日時より古いアップロードを削除
-        
-        Args:
-            before_date: この日時より前の記録を削除
-            
-        Returns:
-            List[str]: 削除されたファイルのR2パスリスト
-            
-        Raises:
-            DatabaseError: 削除失敗時
-        """
-        pass
