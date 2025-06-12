@@ -69,4 +69,4 @@ def setup_file_commands(registry: CommandRegistry, db_service: DatabaseService, 
     ファイル操作コマンドをレジストリに登録
     """
     registry.register(MyFilesCommand(db_service, storage_service))
-    logger.info("File commands registered")
+    logger.debug("File commands registered")

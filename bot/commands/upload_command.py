@@ -17,7 +17,6 @@ from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegi
 from bot.models import UserMapping, UploadEntry
 from bot.services import StorageService, DatabaseService
 from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec
-from bot.config import DEFAULT_UPLOAD_LIMIT
 from bot.errors import UploadError
 
 logger = logging.getLogger(__name__)
@@ -33,6 +32,11 @@ class UploadCommand(BaseCommand):
         super().__init__(db_service, storage_service)
         self.command_name = "upload"
         self.set_permission(PermissionLevel.USER)
+        self._default_upload_limit = 5
+    
+    def set_default_upload_limit(self, limit: int):
+        """デフォルトアップロード上限を設定"""
+        self._default_upload_limit = limit
     
     async def execute_impl(self, interaction: discord.Interaction, url: str, filename: str):
         # URLバリデーション
@@ -55,7 +59,7 @@ class UploadCommand(BaseCommand):
             raise UploadError(f"`{filename}.mp4` は既に存在します。別名を指定してください。")
         
         # 上限チェック
-        limit = user_config.upload_limit if user_config.upload_limit > 0 else DEFAULT_UPLOAD_LIMIT
+        limit = user_config.upload_limit if user_config.upload_limit > 0 else self._default_upload_limit
         if limit > 0 and len(existing_files) >= limit:
             raise UploadError("アップロード上限に達しました。古いファイルを削除してください。")
         
@@ -113,7 +117,7 @@ class UploadCommand(BaseCommand):
                 discord_id=discord_id,
                 folder_name=username,
                 filename="",
-                upload_limit=DEFAULT_UPLOAD_LIMIT
+                upload_limit=self._default_upload_limit
             )
             await asyncio.to_thread(self.db.save_user_mapping, mapping)
             logger.info(f"Default folder '{username}' registered for user {discord_id}")
@@ -142,4 +146,4 @@ def setup_upload_command(registry: CommandRegistry, db_service: DatabaseService,
     アップロードコマンドをレジストリに登録
     """
     registry.register(UploadCommand(db_service, storage_service))
-    logger.info("Upload command registered")
+    logger.debug("Upload command registered")

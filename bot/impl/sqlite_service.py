@@ -44,7 +44,7 @@ class SQLiteDatabaseService(DatabaseService):
             )
             self.cursor = self.conn.cursor()
             self._init_db()
-            logger.info(f"SQLiteDatabaseService initialized with db: {db_path}")
+            logger.debug(f"SQLiteDatabaseService initialized with db: {db_path}")
         except Exception as e:
             logger.error(f"Database initialization failed: {e}")
             raise DatabaseError(f"データベース接続に失敗しました: {e}")

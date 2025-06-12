@@ -41,7 +41,7 @@ class R2StorageService(StorageService):
             config=Config(signature_version="s3v4"),  # Cloudflare推奨の署名バージョン
             region_name="auto"  # R2は自動リージョン
         )
-        logger.info(f"R2StorageService initialized for bucket: {bucket}")
+        logger.debug(f"R2StorageService initialized for bucket: {bucket}")
     
     def upload_file(self, local_path: str, remote_path: str) -> None:
         """

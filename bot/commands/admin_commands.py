@@ -14,7 +14,6 @@ from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegi
 from bot.services import DatabaseService
 from bot.models import UserMapping
 from bot.errors import PermissionError
-from bot.config import DEFAULT_UPLOAD_LIMIT
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +57,11 @@ class ChangeFolderCommand(BaseCommand):
         super().__init__(db_service)
         self.command_name = "changefolder"
         self.set_permission(PermissionLevel.ADMIN)
+        self._default_upload_limit = 5
+    
+    def set_default_upload_limit(self, limit: int):
+        """デフォルトアップロード上限を設定"""
+        self._default_upload_limit = limit
     
     async def execute_impl(self, interaction: discord.Interaction, user: discord.Member = None):
         # 対象ユーザー
@@ -74,7 +78,7 @@ class ChangeFolderCommand(BaseCommand):
                 discord_id=discord_id,
                 folder_name=new_folder_name,
                 filename="",
-                upload_limit=DEFAULT_UPLOAD_LIMIT
+                upload_limit=self._default_upload_limit
             )
             self.db.save_user_mapping(mapping)
             logger.info(f"Folder mapping created for {target}: {new_folder_name}")
@@ -103,4 +107,4 @@ def setup_admin_commands(registry: CommandRegistry, db_service: DatabaseService)
     registry.register(SetLimitCommand(db_service))
     registry.register(ChangeFolderCommand(db_service))
     
-    logger.info("Admin commands registered")
+    logger.debug("Admin commands registered")

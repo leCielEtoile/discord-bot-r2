@@ -1,7 +1,7 @@
 """
 core.py
 
-Discord Bot の初期化・起動処理
+統合されたDiscord Bot起動処理
 設定読み込み、ログ設定、サービス初期化、コマンド管理を一元化
 """
 
@@ -151,14 +151,15 @@ class DiscordBot:
             print(f"ERROR: Failed to setup file logging: {e}")
         
         # 外部ライブラリのログレベル調整
-        logging.getLogger("discord").setLevel(logging.WARNING)
-        logging.getLogger("discord.http").setLevel(logging.WARNING)
-        logging.getLogger("discord.gateway").setLevel(logging.WARNING)
+        logging.getLogger("discord").setLevel(logging.ERROR)  # ERRORのみ
+        logging.getLogger("discord.http").setLevel(logging.ERROR)
+        logging.getLogger("discord.gateway").setLevel(logging.ERROR)
+        logging.getLogger("discord.client").setLevel(logging.ERROR)  # 追加
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)
         
         self.logger = logging.getLogger(__name__)
-        self.logger.info(f"Logging initialized - Console: {self.config['CONSOLE_LOG_LEVEL']}, File: {self.config['FILE_LOG_LEVEL']}")
+        self.logger.debug(f"Logging initialized - Console: {self.config['CONSOLE_LOG_LEVEL']}, File: {self.config['FILE_LOG_LEVEL']}")
     
     def _init_services(self) -> None:
         """各種サービスの初期化"""
@@ -204,6 +205,12 @@ class DiscordBot:
     def _setup_command_registry(self) -> None:
         """コマンドレジストリの初期化"""
         self.command_registry = CommandRegistry()
+        # 設定値を反映
+        self.command_registry.set_config(
+            self.config["ADMIN_ROLE"], 
+            self.config["ALLOWED_ROLE"],
+            self.config["DEFAULT_UPLOAD_LIMIT"]
+        )
         self.logger.debug("Command registry initialized")
     
     def _register_commands(self) -> None:
@@ -213,7 +220,7 @@ class DiscordBot:
         setup_upload_command(self.command_registry, self.db_service, self.storage_service)
         setup_file_commands(self.command_registry, self.db_service, self.storage_service)
         
-        self.logger.info("All commands registered to framework")
+        self.logger.debug("All commands registered to framework")
     
     async def _shutdown(self) -> None:
         """シャットダウン処理"""
@@ -232,7 +239,7 @@ class DiscordBot:
             signal.signal(signal.SIGTERM, self._handle_exit)
             signal.signal(signal.SIGINT, self._handle_exit)
             
-            self.logger.info("Starting Discord bot with integrated framework...")
+            self.logger.debug("Starting Discord bot with integrated framework...")
             self.client.run(self.config["DISCORD_TOKEN"])
             
         except Exception as e:

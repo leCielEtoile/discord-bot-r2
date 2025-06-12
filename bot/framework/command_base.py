@@ -14,7 +14,6 @@ from functools import wraps
 
 from bot.services import DatabaseService, StorageService
 from bot.errors import PermissionError, handle_bot_error
-from bot.config import ADMIN_ROLE, ALLOWED_ROLE
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +34,20 @@ class BaseCommand(ABC):
         self.storage = storage_service
         self.permission_level = PermissionLevel.PUBLIC
         self.command_name = ""
+        
+        # 設定値をフレームワークから取得するための参照
+        self._admin_role = None
+        self._allowed_role = None
     
     def set_permission(self, level: str) -> 'BaseCommand':
         """権限レベルを設定"""
         self.permission_level = level
+        return self
+    
+    def set_roles(self, admin_role: str, allowed_role: str) -> 'BaseCommand':
+        """ロール名を設定（core.pyから呼び出される）"""
+        self._admin_role = admin_role
+        self._allowed_role = allowed_role
         return self
     
     def check_permission(self, user: discord.abc.User) -> bool:
@@ -50,10 +59,10 @@ class BaseCommand(ABC):
             return False
             
         if self.permission_level == PermissionLevel.ADMIN:
-            return any(role.name == ADMIN_ROLE for role in user.roles)
+            return any(role.name == self._admin_role for role in user.roles)
         
         if self.permission_level == PermissionLevel.USER:
-            return any(role.name == ALLOWED_ROLE for role in user.roles)
+            return any(role.name == self._allowed_role for role in user.roles)
         
         return False
     
@@ -95,9 +104,23 @@ class CommandRegistry:
     
     def __init__(self):
         self.commands: List[BaseCommand] = []
+        self._admin_role = "Admin"
+        self._allowed_role = "Uploader"
+        self._default_upload_limit = 5
+    
+    def set_config(self, admin_role: str, allowed_role: str, default_upload_limit: int) -> 'CommandRegistry':
+        """設定値を設定"""
+        self._admin_role = admin_role
+        self._allowed_role = allowed_role
+        self._default_upload_limit = default_upload_limit
+        return self
     
     def register(self, command: BaseCommand) -> 'CommandRegistry':
         """コマンドを登録"""
+        # コマンドに設定値を反映
+        command.set_roles(self._admin_role, self._allowed_role)
+        if hasattr(command, 'set_default_upload_limit'):
+            command.set_default_upload_limit(self._default_upload_limit)
         self.commands.append(command)
         return self
     
@@ -105,7 +128,7 @@ class CommandRegistry:
         """すべてのコマンドをDiscordに登録"""
         for command in self.commands:
             command.setup_discord_command(tree)
-        logger.info(f"Registered {len(self.commands)} commands")
+        logger.debug(f"Registered {len(self.commands)} commands")
 
 def command(name: str, description: str, permission: str = PermissionLevel.PUBLIC):
     """
