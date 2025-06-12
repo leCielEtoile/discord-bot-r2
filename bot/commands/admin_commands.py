@@ -1,9 +1,7 @@
 """
 bot/commands/admin_commands.py
 
-管理者向けコマンドの実装
-- setlimit: ユーザーのアップロード上限設定
-- changefolder: フォルダ名変更
+フレームワーク化された管理者向けコマンド
 """
 
 import discord
@@ -11,8 +9,7 @@ from discord import app_commands
 import logging
 
 from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
-from bot.services import DatabaseService
-from bot.models import UserMapping
+from bot.data import DataManager, UserMapping
 from bot.errors import PermissionError
 
 logger = logging.getLogger(__name__)
@@ -20,8 +17,8 @@ logger = logging.getLogger(__name__)
 class SetLimitCommand(BaseCommand):
     """アップロード上限設定コマンド"""
     
-    def __init__(self, db_service: DatabaseService):
-        super().__init__(db_service)
+    def __init__(self, data_manager: DataManager):
+        super().__init__(data_manager)
         self.command_name = "setlimit"
         self.set_permission(PermissionLevel.ADMIN)
     
@@ -53,8 +50,8 @@ class SetLimitCommand(BaseCommand):
 class ChangeFolderCommand(BaseCommand):
     """フォルダ名変更コマンド"""
     
-    def __init__(self, db_service: DatabaseService):
-        super().__init__(db_service)
+    def __init__(self, data_manager: DataManager):
+        super().__init__(data_manager)
         self.command_name = "changefolder"
         self.set_permission(PermissionLevel.ADMIN)
         self._default_upload_limit = 5
@@ -100,11 +97,11 @@ class ChangeFolderCommand(BaseCommand):
         async def changefolder(interaction: discord.Interaction, user: discord.Member = None):
             await self.execute_with_framework(interaction, user=user)
 
-def setup_admin_commands(registry: CommandRegistry, db_service: DatabaseService):
+def setup_admin_commands(registry: CommandRegistry, data_manager: DataManager):
     """
     管理者コマンドをレジストリに登録
     """
-    registry.register(SetLimitCommand(db_service))
-    registry.register(ChangeFolderCommand(db_service))
+    registry.register(SetLimitCommand(data_manager))
+    registry.register(ChangeFolderCommand(data_manager))
     
-    logger.debug("Admin commands registered")
+    logger.debug("Admin commands registered to framework")

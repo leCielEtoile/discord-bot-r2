@@ -12,7 +12,6 @@ from abc import ABC, abstractmethod
 from typing import Optional, List, Callable, Any
 from functools import wraps
 
-from bot.services import DatabaseService, StorageService
 from bot.errors import PermissionError, handle_bot_error
 
 logger = logging.getLogger(__name__)
@@ -29,7 +28,7 @@ class BaseCommand(ABC):
     共通の権限チェック、エラーハンドリング、ログを提供
     """
     
-    def __init__(self, db_service: DatabaseService, storage_service: Optional[StorageService] = None):
+    def __init__(self, db_service, storage_service: Optional = None):
         self.db = db_service
         self.storage = storage_service
         self.permission_level = PermissionLevel.PUBLIC

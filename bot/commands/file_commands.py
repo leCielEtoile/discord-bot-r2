@@ -1,7 +1,7 @@
 """
 bot/commands/file_commands.py
 
-ファイル一覧表示や操作用コマンドの実装（統合UI対応版）
+フレームワーク化されたファイル操作コマンド
 """
 
 import discord
@@ -9,7 +9,7 @@ from discord import app_commands
 import logging
 
 from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
-from bot.services import DatabaseService, StorageService
+from bot.data import DataManager
 from bot.ui import UnifiedFileView
 
 logger = logging.getLogger(__name__)
@@ -17,8 +17,8 @@ logger = logging.getLogger(__name__)
 class MyFilesCommand(BaseCommand):
     """ファイル一覧表示コマンド"""
     
-    def __init__(self, db_service: DatabaseService, storage_service: StorageService):
-        super().__init__(db_service, storage_service)
+    def __init__(self, data_manager: DataManager, storage_service):
+        super().__init__(data_manager, storage_service)
         self.command_name = "myfiles"
         self.set_permission(PermissionLevel.PUBLIC)  # 自分のファイルは誰でも見れる
     
@@ -64,9 +64,9 @@ class MyFilesCommand(BaseCommand):
         async def myfiles(interaction: discord.Interaction, view_type: str = "list"):
             await self.execute_with_framework(interaction, view_type=view_type)
 
-def setup_file_commands(registry: CommandRegistry, db_service: DatabaseService, storage_service: StorageService):
+def setup_file_commands(registry: CommandRegistry, data_manager: DataManager, storage_service):
     """
     ファイル操作コマンドをレジストリに登録
     """
-    registry.register(MyFilesCommand(db_service, storage_service))
-    logger.debug("File commands registered")
+    registry.register(MyFilesCommand(data_manager, storage_service))
+    logger.debug("File commands registered to framework")

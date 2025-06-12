@@ -21,7 +21,7 @@ from bot.commands.admin_commands import setup_admin_commands
 from bot.commands.upload_command import setup_upload_command
 from bot.commands.file_commands import setup_file_commands
 from bot.impl.r2_service import R2StorageService
-from bot.impl.sqlite_service import SQLiteDatabaseService
+from bot.data import DataManager
 
 class DiscordBot:
     """
@@ -166,9 +166,9 @@ class DiscordBot:
         # データベースパス
         db_path = os.getenv("DB_PATH", "/app/data/db.sqlite3")
         
-        # データベースサービス
-        self.db_service = SQLiteDatabaseService(db_path=db_path)
-        self.logger.debug("Database service initialized")
+        # データマネージャー
+        self.data_manager = DataManager(db_path=db_path)
+        self.logger.debug("Data manager initialized")
         
         # ストレージサービス
         self.storage_service = R2StorageService(
@@ -216,9 +216,9 @@ class DiscordBot:
     def _register_commands(self) -> None:
         """全コマンドをレジストリに登録"""
         # 各コマンドモジュールから登録
-        setup_admin_commands(self.command_registry, self.db_service)
-        setup_upload_command(self.command_registry, self.db_service, self.storage_service)
-        setup_file_commands(self.command_registry, self.db_service, self.storage_service)
+        setup_admin_commands(self.command_registry, self.data_manager)
+        setup_upload_command(self.command_registry, self.data_manager, self.storage_service)
+        setup_file_commands(self.command_registry, self.data_manager, self.storage_service)
         
         self.logger.debug("All commands registered to framework")
     

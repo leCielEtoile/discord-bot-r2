@@ -10,12 +10,11 @@ from botocore.exceptions import BotoCoreError, ClientError
 from urllib.parse import quote_plus
 import logging
 
-from bot.services import StorageService
 from bot.errors import StorageError
 
 logger = logging.getLogger(__name__)
 
-class R2StorageService(StorageService):
+class R2StorageService:
     """Cloudflare R2を使用したストレージサービス実装"""
     
     def __init__(self, bucket, endpoint, access_key, secret_key, public_url):

@@ -10,8 +10,7 @@ from typing import List
 from datetime import datetime
 import math
 
-from bot.models import UploadEntry
-from bot.services import StorageService, DatabaseService
+from bot.data import UploadEntry
 from bot.errors import StorageError, DatabaseError
 
 logger = logging.getLogger(__name__)
@@ -41,8 +40,7 @@ class UnifiedFileView(discord.ui.View):
     """
 
     def __init__(self, user_id: str, entries: List[UploadEntry], 
-                 storage_service: StorageService, db_service: DatabaseService, 
-                 view_mode: str = "list"):
+                 storage_service, db_service, view_mode: str = "list"):
         super().__init__(timeout=600)
         self.user_id = user_id
         self.storage = storage_service

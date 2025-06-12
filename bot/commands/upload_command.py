@@ -1,8 +1,7 @@
 """
 bot/commands/upload_command.py
 
-YouTubeの動画をダウンロードしてR2にアップロードするコマンドの実装
-H.264/AACコーデックを優先
+フレームワーク化されたYouTubeアップロードコマンド
 """
 
 import discord
@@ -14,8 +13,7 @@ from datetime import datetime
 import logging
 
 from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
-from bot.models import UserMapping, UploadEntry
-from bot.services import StorageService, DatabaseService
+from bot.data import DataManager, UserMapping, UploadEntry
 from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec
 from bot.errors import UploadError
 
@@ -28,8 +26,8 @@ def is_valid_filename(name: str) -> bool:
 class UploadCommand(BaseCommand):
     """YouTubeアップロードコマンド"""
     
-    def __init__(self, db_service: DatabaseService, storage_service: StorageService):
-        super().__init__(db_service, storage_service)
+    def __init__(self, data_manager: DataManager, storage_service):
+        super().__init__(data_manager, storage_service)
         self.command_name = "upload"
         self.set_permission(PermissionLevel.USER)
         self._default_upload_limit = 5
@@ -141,9 +139,9 @@ class UploadCommand(BaseCommand):
         async def upload(interaction: discord.Interaction, url: str, filename: str):
             await self.execute_with_framework(interaction, url=url, filename=filename)
 
-def setup_upload_command(registry: CommandRegistry, db_service: DatabaseService, storage_service: StorageService):
+def setup_upload_command(registry: CommandRegistry, data_manager: DataManager, storage_service):
     """
     アップロードコマンドをレジストリに登録
     """
-    registry.register(UploadCommand(db_service, storage_service))
-    logger.debug("Upload command registered")
+    registry.register(UploadCommand(data_manager, storage_service))
+    logger.debug("Upload command registered to framework")
