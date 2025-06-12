@@ -12,8 +12,9 @@ import signal
 import logging
 import os
 
+from bot.framework.command_base import CommandRegistry
 from bot.commands.admin_commands import setup_admin_commands
-from bot.commands.upload_command import UploadCommand
+from bot.commands.upload_command import setup_upload_command
 from bot.commands.file_commands import setup_file_commands
 from bot.impl.r2_service import R2StorageService
 from bot.impl.sqlite_service import SQLiteDatabaseService
@@ -27,7 +28,7 @@ from bot.config import (
 logger = logging.getLogger(__name__)
 
 class DiscordBot:
-    """Discord Botのメインクラス"""
+    """フレームワーク化されたDiscord Botのメインクラス"""
     
     def __init__(self):
         """Botと各サービスを初期化"""
@@ -39,7 +40,7 @@ class DiscordBot:
         self.client = discord.Client(intents=intents)
         self.tree = app_commands.CommandTree(self.client)
         
-        # データベースパスを環境変数から取得（デフォルトは/app/data/db.sqlite3）
+        # データベースパス取得
         db_path = os.getenv("DB_PATH", "/app/data/db.sqlite3")
         
         # サービス初期化
@@ -52,6 +53,9 @@ class DiscordBot:
             public_url=R2_PUBLIC_URL
         )
         
+        # コマンドレジストリ初期化
+        self.command_registry = CommandRegistry()
+        
         # クライアントイベント登録
         self._register_events()
         
@@ -60,23 +64,24 @@ class DiscordBot:
         @self.client.event
         async def on_ready():
             # コマンド登録
-            await self._register_commands()
+            self._register_commands()
             
-            # コマンドツリー同期
+            # Discordにコマンド同期
+            self.command_registry.setup_all(self.tree)
             await self.tree.sync()
+            
             logger.info(f"Bot logged in as {self.client.user}")
     
-    async def _register_commands(self):
-        """全コマンドを登録（非同期）"""
+    def _register_commands(self):
+        """全コマンドをフレームワークに登録"""
         # 管理者コマンド
-        setup_admin_commands(self.tree, self.db_service)
+        setup_admin_commands(self.command_registry, self.db_service)
         
         # アップロードコマンド
-        upload_cmd = UploadCommand(self.storage_service, self.db_service)
-        await upload_cmd.register(self.tree)
+        setup_upload_command(self.command_registry, self.db_service, self.storage_service)
         
         # ファイル操作コマンド
-        setup_file_commands(self.tree, self.db_service, self.storage_service)
+        setup_file_commands(self.command_registry, self.db_service, self.storage_service)
         
         logger.info("All commands registered")
     

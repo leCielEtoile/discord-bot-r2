@@ -10,131 +10,97 @@ import discord
 from discord import app_commands
 import logging
 
+from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
 from bot.services import DatabaseService
 from bot.models import UserMapping
-from bot.errors import PermissionError, handle_bot_error
-from bot.config import DEFAULT_UPLOAD_LIMIT, ADMIN_ROLE, ALLOWED_ROLE
+from bot.errors import PermissionError
+from bot.config import DEFAULT_UPLOAD_LIMIT
 
 logger = logging.getLogger(__name__)
 
-def has_permission(member: discord.Member) -> bool:
-    """
-    Discord メンバーが設定された許可ロールを保有しているかを判定する。
-
-    Args:
-        member: Discord メンバーオブジェクト
-
-    Returns:
-        True: 権限あり
-        False: 権限なし
-    """
-    return any(role.name == ALLOWED_ROLE for role in member.roles)
-
-def is_admin(user: discord.abc.User | discord.Member) -> bool:
-    """
-    ユーザーが管理者ロール（ADMIN_ROLE）を持っているかを判定。
-
-    Args:
-        user: チェック対象の Discord ユーザー or メンバー
-
-    Returns:
-        True: 管理者
-        False: 一般ユーザー
-    """
-    # メンバー型でロール確認ができる場合のみ
-    if hasattr(user, "roles"):
-        return any(role.name == ADMIN_ROLE for role in user.roles)
-    return False
-
-def setup_admin_commands(tree: app_commands.CommandTree, db_service: DatabaseService):
-    """
-    管理者コマンドをコマンドツリーに登録
+class SetLimitCommand(BaseCommand):
+    """アップロード上限設定コマンド"""
     
-    Args:
-        tree: コマンドツリー
-        db_service: データベースサービス
-    """
+    def __init__(self, db_service: DatabaseService):
+        super().__init__(db_service)
+        self.command_name = "setlimit"
+        self.set_permission(PermissionLevel.ADMIN)
     
-    @tree.command(name="setlimit", description="指定ユーザーのアップロード上限を設定（管理者のみ）")
-    @app_commands.describe(user="対象のユーザー", limit="新しいアップロード上限（0で無制限）")
-    async def setlimit(interaction: discord.Interaction, user: discord.Member, limit: int):
-        """
-        管理者が対象ユーザーのアップロード可能数（上限）を設定する。
-        0 を指定した場合は無制限として扱う。
-        """
-        logger.info(f"/setlimit invoked by {interaction.user} for {user} with limit={limit}")
+    async def execute_impl(self, interaction: discord.Interaction, user: discord.Member, limit: int):
+        # 現在の設定を取得
+        mapping = self.db.get_user_mapping(str(user.id))
+        if not mapping:
+            await interaction.response.send_message("⚠️ 対象ユーザーは設定されていません。", ephemeral=True)
+            logger.warning(f"setlimit failed: no mapping found for {user}")
+            return
         
-        try:
-            # 管理者権限チェック
-            if not is_admin(interaction.user):
-                raise PermissionError("管理者権限がありません。")
-            
-            # 現在の設定を取得
-            mapping = db_service.get_user_mapping(str(user.id))
-            if not mapping:
-                await interaction.response.send_message("⚠️ 対象ユーザーは設定されていません。", ephemeral=True)
-                logger.warning(f"setlimit failed: no mapping found for {user}")
-                return
-            
-            # 上限を更新して保存
-            mapping.upload_limit = limit
-            db_service.save_user_mapping(mapping)
-            
-            # 応答
-            limit_str = "無制限" if limit <= 0 else str(limit)
-            await interaction.response.send_message(
-                f"✅ {user.display_name} のアップロード上限を {limit_str} に設定しました。",
-                ephemeral=True,
-            )
-            
-            logger.info(f"Upload limit updated: {user} = {limit}")
-            
-        except Exception as e:
-            await handle_bot_error(e, interaction, f"setlimit failed: {e}")
-    
-    @tree.command(name="changefolder", description="対象フォルダを変更します（管理者のみ）")
-    @app_commands.describe(user="対象ユーザー（指定しない場合は自身の名前に戻す）")
-    async def changefolder(interaction: discord.Interaction, user: discord.Member = None):
-        """
-        管理者が現在のアップロード先フォルダ名（folder_name）を変更できるコマンド。
-        引数なしで実行した場合、自分自身のユーザー名に戻す。
-        """
-        logger.info(f"/changefolder invoked by {interaction.user} for {user or interaction.user}")
+        # 上限を更新して保存
+        mapping.upload_limit = limit
+        self.db.save_user_mapping(mapping)
         
-        try:
-            # 管理者権限チェック
-            if not is_admin(interaction.user):
-                raise PermissionError("管理者権限がありません。")
-            
-            # 対象ユーザー
-            target = user or interaction.user
-            discord_id = str(target.id)
-            new_folder_name = target.name
-            
-            # 現在の設定を取得
-            mapping = db_service.get_user_mapping(discord_id)
-            
-            if not mapping:
-                # 新規作成
-                mapping = UserMapping(
-                    discord_id=discord_id,
-                    folder_name=new_folder_name,
-                    filename="",
-                    upload_limit=DEFAULT_UPLOAD_LIMIT
-                )
-                db_service.save_user_mapping(mapping)
-                logger.info(f"Folder mapping created for {target}: {new_folder_name}")
-            else:
-                # 更新
-                mapping.folder_name = new_folder_name
-                db_service.save_user_mapping(mapping)
-                logger.info(f"Folder mapping updated for {target}: {new_folder_name}")
-            
-            # 応答
-            await interaction.response.send_message(
-                f"✅ `{target.display_name}` のフォルダ名を `{new_folder_name}` に設定しました。", 
-                ephemeral=True
+        # 応答
+        limit_str = "無制限" if limit <= 0 else str(limit)
+        await interaction.response.send_message(
+            f"✅ {user.display_name} のアップロード上限を {limit_str} に設定しました。",
+            ephemeral=True,
+        )
+    
+    def setup_discord_command(self, tree: app_commands.CommandTree):
+        @tree.command(name="setlimit", description="指定ユーザーのアップロード上限を設定（管理者のみ）")
+        @app_commands.describe(user="対象のユーザー", limit="新しいアップロード上限（0で無制限）")
+        async def setlimit(interaction: discord.Interaction, user: discord.Member, limit: int):
+            await self.execute_with_framework(interaction, user=user, limit=limit)
+
+class ChangeFolderCommand(BaseCommand):
+    """フォルダ名変更コマンド"""
+    
+    def __init__(self, db_service: DatabaseService):
+        super().__init__(db_service)
+        self.command_name = "changefolder"
+        self.set_permission(PermissionLevel.ADMIN)
+    
+    async def execute_impl(self, interaction: discord.Interaction, user: discord.Member = None):
+        # 対象ユーザー
+        target = user or interaction.user
+        discord_id = str(target.id)
+        new_folder_name = target.name
+        
+        # 現在の設定を取得
+        mapping = self.db.get_user_mapping(discord_id)
+        
+        if not mapping:
+            # 新規作成
+            mapping = UserMapping(
+                discord_id=discord_id,
+                folder_name=new_folder_name,
+                filename="",
+                upload_limit=DEFAULT_UPLOAD_LIMIT
             )
-            
-        except Exception as e:
-            await handle_bot_error(e, interaction, f"changefolder failed: {e}")
+            self.db.save_user_mapping(mapping)
+            logger.info(f"Folder mapping created for {target}: {new_folder_name}")
+        else:
+            # 更新
+            mapping.folder_name = new_folder_name
+            self.db.save_user_mapping(mapping)
+            logger.info(f"Folder mapping updated for {target}: {new_folder_name}")
+        
+        # 応答
+        await interaction.response.send_message(
+            f"✅ `{target.display_name}` のフォルダ名を `{new_folder_name}` に設定しました。", 
+            ephemeral=True
+        )
+    
+    def setup_discord_command(self, tree: app_commands.CommandTree):
+        @tree.command(name="changefolder", description="対象フォルダを変更します（管理者のみ）")
+        @app_commands.describe(user="対象ユーザー（指定しない場合は自身の名前に戻す）")
+        async def changefolder(interaction: discord.Interaction, user: discord.Member = None):
+            await self.execute_with_framework(interaction, user=user)
+
+def setup_admin_commands(registry: CommandRegistry, db_service: DatabaseService):
+    """
+    管理者コマンドをレジストリに登録
+    """
+    registry.register(SetLimitCommand(db_service))
+    registry.register(ChangeFolderCommand(db_service))
+    
+    logger.info("Admin commands registered")
