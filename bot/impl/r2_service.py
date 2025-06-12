@@ -1,7 +1,8 @@
 """
 bot/impl/r2_service.py
 
-Cloudflare R2（S3互換API）を用いたストレージサービスの実装
+Cloudflare R2ストレージサービスの実装
+S3互換APIを使用したファイルアップロード・削除・URL生成
 """
 
 import boto3
@@ -15,43 +16,46 @@ from bot.errors import StorageError
 logger = logging.getLogger(__name__)
 
 class R2StorageService:
-    """Cloudflare R2を使用したストレージサービス実装"""
+    """
+    Cloudflare R2を使用したクラウドストレージサービス
+    boto3のS3互換クライアントを使用してR2操作を実装
+    """
     
     def __init__(self, bucket, endpoint, access_key, secret_key, public_url):
         """
-        R2接続の初期化
+        R2ストレージクライアントの初期化
         
         Args:
             bucket: R2バケット名
-            endpoint: R2エンドポイントURL
-            access_key: R2アクセスキー
-            secret_key: R2シークレットキー
-            public_url: 公開URLのベース
+            endpoint: R2エンドポイントURL（アカウント固有）
+            access_key: R2 APIアクセスキー
+            secret_key: R2 APIシークレットキー
+            public_url: ファイル公開用のベースURL
         """
         self.bucket = bucket
         self.public_url = public_url
         
-        # S3互換のboto3クライアントを初期化
+        # boto3でS3互換のR2クライアントを作成
         self.s3_client = boto3.client(
             "s3",
             endpoint_url=endpoint,
             aws_access_key_id=access_key,
             aws_secret_access_key=secret_key,
-            config=Config(signature_version="s3v4"),  # Cloudflare推奨の署名バージョン
-            region_name="auto"  # R2は自動リージョン
+            config=Config(signature_version="s3v4"),  # R2推奨の署名形式
+            region_name="auto"                        # R2は自動リージョン選択
         )
         logger.debug(f"R2StorageService initialized for bucket: {bucket}")
     
     def upload_file(self, local_path: str, remote_path: str) -> None:
         """
-        ローカルファイルをR2にアップロード
+        ローカルファイルをR2ストレージにアップロード
         
         Args:
-            local_path: ローカルファイルのフルパス
-            remote_path: R2上の保存パス
+            local_path: アップロード元のローカルファイルパス
+            remote_path: R2上の保存先パス
             
         Raises:
-            StorageError: アップロード失敗時
+            StorageError: アップロード処理が失敗した場合
         """
         try:
             with open(local_path, "rb") as file:
@@ -66,13 +70,13 @@ class R2StorageService:
     
     def delete_file(self, remote_path: str) -> None:
         """
-        指定されたパスのファイルをR2から削除
+        R2ストレージから指定ファイルを削除
         
         Args:
             remote_path: 削除対象のR2ファイルパス
             
         Raises:
-            StorageError: 削除失敗時
+            StorageError: 削除処理が失敗した場合
         """
         try:
             self.s3_client.delete_object(Bucket=self.bucket, Key=remote_path)
@@ -86,13 +90,14 @@ class R2StorageService:
     
     def generate_public_url(self, remote_path: str) -> str:
         """
-        指定されたR2パスに基づいて公開URLを生成
+        R2ファイルの公開アクセス用URLを生成
         
         Args:
-            remote_path: 公開対象のファイルパス
+            remote_path: 公開対象のR2ファイルパス
             
         Returns:
-            str: 完全な公開URL
+            str: ブラウザでアクセス可能な完全URL
         """
-        # /はパス区切りとして扱いたいのでエンコードしない
-        return f"{self.public_url}/{quote_plus(remote_path, safe='/')}"
+        # URLエンコード（パス区切り文字は保持）
+        encoded_path = quote_plus(remote_path, safe='/')
+        return f"{self.public_url}/{encoded_path}"

@@ -6,34 +6,34 @@ services:
     container_name: discord-ytdl-bot
     restart: unless-stopped
     volumes:
-      # 設定ファイル
+      # 設定ファイル（読み取り専用でマウント）
       - ./config.yaml:/app/config.yaml:ro
-      # データベース永続化
+      # データベースファイルの永続化
       - ./data:/app/data
-      # ログ永続化
+      # ログファイルの永続化
       - ./logs:/app/logs
     environment:
-      # 環境変数による設定上書き
+      # 設定ファイルよりも環境変数を優先する場合はここで指定
       # - DISCORD_TOKEN=your-token-here
       # - R2_BUCKET=your-bucket
       # - R2_ENDPOINT=your-endpoint
       # - R2_ACCESS_KEY=your-access-key
       # - R2_SECRET_KEY=your-secret-key
       # - R2_PUBLIC_URL=your-public-url
-      # 設定ファイルパス
+      
+      # アプリケーション固有の環境変数
       - CONFIG_PATH=/app/config.yaml
-      # ログレベル設定
       - LOG_LEVEL=INFO
-      # データベースファイルパス
       - DB_PATH=/app/data/db.sqlite3
-      # キャッシュディレクトリ
       - XDG_CACHE_HOME=/app/data/cache
-    # コンテナ内ユーザーをホスト側のuidに合わせる（権限問題回避）
+    
+    # コンテナ実行ユーザーをホストのユーザーに合わせる
     user: "${UID:-1000}:${GID:-1000}"
-    # ヘルスチェック
+    
+    # コンテナの健全性チェック
     healthcheck:
       test: ["CMD", "ps", "aux", "|", "grep", "python", "|", "grep", "-v", "grep"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 10s
+      interval: 30s      # 30秒間隔でチェック
+      timeout: 10s       # 10秒でタイムアウト
+      retries: 3         # 3回失敗で異常判定
+      start_period: 10s  # 起動から10秒は猶予期間

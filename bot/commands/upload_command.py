@@ -1,7 +1,8 @@
 """
 bot/commands/upload_command.py
 
-フレームワーク化されたYouTubeアップロードコマンド
+YouTube動画アップロード機能の実装
+動画ダウンロード、変換、ストレージアップロード、データベース記録を統合
 """
 
 import discord
@@ -20,67 +21,100 @@ from bot.errors import UploadError
 logger = logging.getLogger(__name__)
 
 def is_valid_filename(name: str) -> bool:
-    """ファイル名検証"""
+    """
+    ファイル名の妥当性をチェック
+    英数字、アンダースコア、ハイフンのみ許可
+    
+    Args:
+        name: チェック対象のファイル名
+        
+    Returns:
+        bool: 有効なファイル名の場合True
+    """
     return re.fullmatch(r"[a-zA-Z0-9_\-]+", name) is not None
 
 class UploadCommand(BaseCommand):
-    """YouTubeアップロードコマンド"""
+    """
+    YouTube動画をダウンロードしてR2ストレージにアップロードするコマンド
+    """
     
     def __init__(self, data_manager: DataManager, storage_service):
+        """
+        コマンドの初期化
+        
+        Args:
+            data_manager: データベース管理インスタンス
+            storage_service: ストレージサービスインスタンス
+        """
         super().__init__(data_manager, storage_service)
         self.command_name = "upload"
         self.set_permission(PermissionLevel.USER)
         self._default_upload_limit = 5
     
     def set_default_upload_limit(self, limit: int):
-        """デフォルトアップロード上限を設定"""
+        """
+        新規ユーザーのデフォルトアップロード上限を設定
+        
+        Args:
+            limit: デフォルト上限値
+        """
         self._default_upload_limit = limit
     
     async def execute_impl(self, interaction: discord.Interaction, url: str, filename: str):
-        # URLバリデーション
+        """
+        アップロード処理の実行
+        
+        Args:
+            interaction: Discordインタラクション
+            url: YouTube動画のURL
+            filename: 保存するファイル名（拡張子なし）
+        """
+        # 入力値の検証
         if not validate_youtube_url(url):
             raise UploadError("有効なYouTubeのURLを入力してください。")
         
-        # ファイル名バリデーション
         if not is_valid_filename(filename):
             raise UploadError("ファイル名に不正な文字が含まれています。")
         
-        # ユーザー設定取得
+        # ユーザー設定の取得または作成
         discord_id = str(interaction.user.id)
         user_config = await self._get_or_create_user_config(discord_id, interaction.user.name)
         
-        # ファイル一覧取得と上限・重複チェック
+        # 既存ファイルの取得と制限チェック
         existing_files = await self._get_user_files(discord_id)
         
-        # 重複チェック
+        # ファイル名の重複チェック
         if any(entry.filename == filename for entry in existing_files):
             raise UploadError(f"`{filename}.mp4` は既に存在します。別名を指定してください。")
         
-        # 上限チェック
+        # アップロード上限のチェック
         limit = user_config.upload_limit if user_config.upload_limit > 0 else self._default_upload_limit
         if limit > 0 and len(existing_files) >= limit:
             raise UploadError("アップロード上限に達しました。古いファイルを削除してください。")
         
-        # 処理開始通知
+        # 処理開始の通知
         await interaction.response.send_message("📥 ダウンロードを開始します...", ephemeral=True)
         
-        # ダウンロード・アップロード処理
+        # ファイルパスの準備
         local_path = f"/tmp/{filename}.mp4"
         r2_path = f"{user_config.folder_name}/{filename}.mp4"
         
         try:
-            # タイトル取得・ダウンロード・アップロード
+            # YouTube動画のタイトル取得
             title = await asyncio.to_thread(get_video_title, url)
             
+            # 動画のダウンロード（非同期実行でブロッキングを回避）
             download_success = await asyncio.to_thread(download_video, url, local_path)
             if not download_success:
                 raise UploadError("ダウンロードに失敗しました。")
             
+            # ダウンロードしたファイルのコーデック確認
             video_codec, audio_codec = await asyncio.to_thread(check_video_codec, local_path)
             
+            # R2ストレージへのアップロード
             await asyncio.to_thread(lambda: self.storage.upload_file(local_path, r2_path))
             
-            # DB登録
+            # データベースへの記録
             entry = UploadEntry(
                 id=None,
                 discord_id=discord_id,
@@ -92,7 +126,7 @@ class UploadCommand(BaseCommand):
             )
             await self._log_upload(entry)
             
-            # 完了通知
+            # 完了通知の送信
             public_url = self.storage.generate_public_url(r2_path)
             codec_info = f"🎬 動画コーデック: {video_codec}, 🔊 音声コーデック: {audio_codec}"
             
@@ -102,15 +136,25 @@ class UploadCommand(BaseCommand):
             )
             
         finally:
-            # 一時ファイル削除
+            # 一時ファイルのクリーンアップ
             if os.path.exists(local_path):
                 os.remove(local_path)
     
     async def _get_or_create_user_config(self, discord_id: str, username: str) -> UserMapping:
-        """ユーザー設定を取得または作成"""
+        """
+        ユーザー設定を取得、存在しない場合は新規作成
+        
+        Args:
+            discord_id: ユーザーのDiscord ID
+            username: ユーザー名（フォルダ名のデフォルト値として使用）
+            
+        Returns:
+            UserMapping: ユーザー設定
+        """
         mapping = await asyncio.to_thread(self.db.get_user_mapping, discord_id)
         
         if not mapping:
+            # 新規ユーザーの場合はデフォルト設定で作成
             mapping = UserMapping(
                 discord_id=discord_id,
                 folder_name=username,
@@ -123,14 +167,28 @@ class UploadCommand(BaseCommand):
         return mapping
     
     async def _get_user_files(self, discord_id: str) -> list[UploadEntry]:
-        """ユーザーのファイル一覧を取得"""
+        """
+        ユーザーの既存ファイル一覧を取得
+        
+        Args:
+            discord_id: ユーザーのDiscord ID
+            
+        Returns:
+            List[UploadEntry]: ファイルエントリのリスト
+        """
         return await asyncio.to_thread(self.db.list_user_files, discord_id)
     
     async def _log_upload(self, entry: UploadEntry) -> None:
-        """アップロード記録をDBに保存"""
+        """
+        アップロード記録をデータベースに保存
+        
+        Args:
+            entry: 保存するアップロードエントリ
+        """
         await asyncio.to_thread(self.db.log_upload, entry)
     
     def setup_discord_command(self, tree: app_commands.CommandTree):
+        """Discord APIにコマンドを登録"""
         @tree.command(name="upload", description="YouTube動画をダウンロードしてR2に保存します")
         @app_commands.describe(
             url="YouTube動画のURL",
@@ -141,7 +199,12 @@ class UploadCommand(BaseCommand):
 
 def setup_upload_command(registry: CommandRegistry, data_manager: DataManager, storage_service):
     """
-    アップロードコマンドをレジストリに登録
+    アップロードコマンドをコマンドレジストリに登録
+    
+    Args:
+        registry: コマンドレジストリインスタンス
+        data_manager: データベース管理インスタンス
+        storage_service: ストレージサービスインスタンス
     """
     registry.register(UploadCommand(data_manager, storage_service))
     logger.debug("Upload command registered to framework")

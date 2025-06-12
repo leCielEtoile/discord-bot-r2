@@ -1,8 +1,8 @@
 """
 core.py
 
-統合されたDiscord Bot起動処理
-設定読み込み、ログ設定、サービス初期化、コマンド管理を一元化
+Discord Botの中核となる統合管理クラス
+設定読み込み、ログ初期化、サービス管理、コマンド登録を一元化
 """
 
 import discord
@@ -25,16 +25,22 @@ from bot.data import DataManager
 
 class DiscordBot:
     """
-    統合されたDiscord Botクラス
-    設定・ログ・サービス・コマンドを一元管理
+    Discord Botの統合管理クラス
+    アプリケーション全体のライフサイクルを管理
     """
     
     def __init__(self, config_path: str = "config.yaml"):
+        """
+        Botインスタンスの初期化
+        
+        Args:
+            config_path: 設定ファイルのパス
+        """
         self.config_path = config_path
         self.config = {}
         self.logger = None
         
-        # 初期化シーケンス
+        # 初期化の実行順序は依存関係に基づく
         self._load_config()
         self._setup_logging()
         self._init_services()
@@ -42,8 +48,11 @@ class DiscordBot:
         self._setup_command_registry()
         
     def _load_config(self) -> None:
-        """設定ファイル読み込み（環境変数で上書き可能）"""
-        # デフォルト設定
+        """
+        設定ファイルの読み込みと環境変数による上書き処理
+        デフォルト値 → YAMLファイル → 環境変数の順で優先度が高い
+        """
+        # デフォルト設定値
         self.config = {
             "DISCORD_TOKEN": "",
             "ADMIN_ROLE": "Admin",
@@ -60,7 +69,7 @@ class DiscordBot:
             "LOG_DIR": "logs",
         }
         
-        # 設定ファイルから読み込み
+        # YAMLファイルからの読み込み
         try:
             if os.path.exists(self.config_path):
                 with open(self.config_path, "r", encoding="utf-8") as f:
@@ -73,11 +82,12 @@ class DiscordBot:
         except Exception as e:
             print(f"Failed to load configuration file: {e}")
         
-        # 環境変数で上書き
+        # 環境変数による上書き（最優先）
         env_overrides = 0
         for key in self.config:
             env_value = os.getenv(key)
             if env_value:
+                # 型を適切に変換
                 if isinstance(self.config[key], int) and env_value.isdigit():
                     self.config[key] = int(env_value)
                 else:
@@ -87,7 +97,7 @@ class DiscordBot:
         if env_overrides > 0:
             print(f"Configuration overridden by {env_overrides} environment variables")
         
-        # 必須設定のバリデーション
+        # 必須項目の検証
         required_keys = ["DISCORD_TOKEN", "R2_BUCKET", "R2_ENDPOINT", "R2_ACCESS_KEY", "R2_SECRET_KEY"]
         missing_keys = [key for key in required_keys if not self.config[key]]
         
@@ -96,24 +106,27 @@ class DiscordBot:
             raise ValueError(f"Missing required configuration: {missing_str}")
     
     def _setup_logging(self) -> None:
-        """ログ設定（コンソールとファイルで別レベル対応）"""
-        # ログレベル取得
+        """
+        ログシステムの初期化
+        コンソール出力とファイル出力で異なるレベルに対応
+        """
+        # 設定からログレベルを取得
         console_level = getattr(logging, self.config["CONSOLE_LOG_LEVEL"].upper(), logging.INFO)
         file_level = getattr(logging, self.config["FILE_LOG_LEVEL"].upper(), logging.DEBUG)
         
-        # ログディレクトリ作成
+        # ログファイル用ディレクトリの作成
         log_dir = self.config["LOG_DIR"]
         os.makedirs(log_dir, exist_ok=True)
         
-        # ルートロガー設定
+        # ルートロガーの設定（最も詳細なレベルに設定）
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)  # 最も詳細なレベルに設定
+        root_logger.setLevel(logging.DEBUG)
         
-        # 既存のハンドラをクリア
+        # 既存ハンドラのクリア（重複防止）
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
         
-        # フォーマッタ
+        # ログフォーマッタの定義
         detailed_formatter = logging.Formatter(
             "%(asctime)s [%(levelname)s] %(name)s: %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S"
@@ -124,13 +137,13 @@ class DiscordBot:
             datefmt="%H:%M:%S"
         )
         
-        # コンソール出力（設定可能レベル）
+        # コンソール出力ハンドラ
         console = logging.StreamHandler()
         console.setFormatter(simple_formatter if console_level >= logging.INFO else detailed_formatter)
         console.setLevel(console_level)
         root_logger.addHandler(console)
         
-        # ファイル出力（詳細ログ）
+        # ファイル出力ハンドラ（ローテーション機能付き）
         try:
             today = datetime.now().strftime("%Y-%m-%d")
             log_path = os.path.join(log_dir, f"bot-{today}.log")
@@ -150,11 +163,11 @@ class DiscordBot:
         except Exception as e:
             print(f"ERROR: Failed to setup file logging: {e}")
         
-        # 外部ライブラリのログレベル調整
-        logging.getLogger("discord").setLevel(logging.ERROR)  # ERRORのみ
+        # 外部ライブラリのログレベル抑制（ノイズ削減）
+        logging.getLogger("discord").setLevel(logging.ERROR)
         logging.getLogger("discord.http").setLevel(logging.ERROR)
         logging.getLogger("discord.gateway").setLevel(logging.ERROR)
-        logging.getLogger("discord.client").setLevel(logging.ERROR)  # 追加
+        logging.getLogger("discord.client").setLevel(logging.ERROR)
         logging.getLogger("boto3").setLevel(logging.WARNING)
         logging.getLogger("botocore").setLevel(logging.WARNING)
         
@@ -162,15 +175,17 @@ class DiscordBot:
         self.logger.debug(f"Logging initialized - Console: {self.config['CONSOLE_LOG_LEVEL']}, File: {self.config['FILE_LOG_LEVEL']}")
     
     def _init_services(self) -> None:
-        """各種サービスの初期化"""
-        # データベースパス
+        """
+        データベースとストレージサービスの初期化
+        """
+        # データベースファイルパスの決定
         db_path = os.getenv("DB_PATH", "/app/data/db.sqlite3")
         
-        # データマネージャー
+        # データマネージャーの初期化
         self.data_manager = DataManager(db_path=db_path)
         self.logger.debug("Data manager initialized")
         
-        # ストレージサービス
+        # R2ストレージサービスの初期化
         self.storage_service = R2StorageService(
             bucket=self.config["R2_BUCKET"],
             endpoint=self.config["R2_ENDPOINT"],
@@ -181,19 +196,21 @@ class DiscordBot:
         self.logger.debug("Storage service initialized")
     
     def _setup_discord_client(self) -> None:
-        """Discordクライアントの設定"""
-        # インテント設定
+        """
+        Discordクライアントとイベントハンドラの設定
+        """
+        # 必要なインテントの設定
         intents = discord.Intents.default()
         intents.members = True
         
-        # クライアント初期化
+        # クライアントインスタンスの作成
         self.client = discord.Client(intents=intents)
         self.tree = app_commands.CommandTree(self.client)
         
-        # イベント登録
+        # Bot準備完了イベントハンドラ
         @self.client.event
         async def on_ready():
-            # コマンド登録とDiscord同期
+            # コマンドの登録とDiscordサーバーとの同期
             self._register_commands()
             self.command_registry.setup_all(self.tree)
             await self.tree.sync()
@@ -203,9 +220,11 @@ class DiscordBot:
         self.logger.debug("Discord client configured")
     
     def _setup_command_registry(self) -> None:
-        """コマンドレジストリの初期化"""
+        """
+        コマンドレジストリの初期化と設定値の反映
+        """
         self.command_registry = CommandRegistry()
-        # 設定値を反映
+        # 設定ファイルの値をコマンド系統に反映
         self.command_registry.set_config(
             self.config["ADMIN_ROLE"], 
             self.config["ALLOWED_ROLE"],
@@ -214,28 +233,41 @@ class DiscordBot:
         self.logger.debug("Command registry initialized")
     
     def _register_commands(self) -> None:
-        """全コマンドをレジストリに登録"""
-        # 各コマンドモジュールから登録
+        """
+        各コマンドモジュールからのコマンド登録
+        """
+        # 管理者コマンドの登録
         setup_admin_commands(self.command_registry, self.data_manager)
+        # アップロードコマンドの登録
         setup_upload_command(self.command_registry, self.data_manager, self.storage_service)
+        # ファイル操作コマンドの登録
         setup_file_commands(self.command_registry, self.data_manager, self.storage_service)
         
         self.logger.debug("All commands registered to framework")
     
     async def _shutdown(self) -> None:
-        """シャットダウン処理"""
+        """
+        Bot終了時のクリーンアップ処理
+        """
         self.logger.info("Shutting down bot...")
         await self.client.close()
         self.logger.info("Bot shutdown complete")
     
     def _handle_exit(self, *_) -> None:
-        """シグナルハンドラ"""
+        """
+        システムシグナル受信時の終了処理
+        """
         asyncio.create_task(self._shutdown())
     
     def run(self) -> int:
-        """Botを起動"""
+        """
+        Botの実行開始
+        
+        Returns:
+            int: 終了コード（0=正常終了、1=異常終了）
+        """
         try:
-            # シグナルハンドラ登録
+            # システムシグナルのハンドラ登録
             signal.signal(signal.SIGTERM, self._handle_exit)
             signal.signal(signal.SIGINT, self._handle_exit)
             
@@ -252,12 +284,22 @@ class DiscordBot:
         return 0
     
     def get_config(self, key: str, default: Any = None) -> Any:
-        """設定値を取得"""
+        """
+        設定値の取得
+        
+        Args:
+            key: 設定キー
+            default: デフォルト値
+            
+        Returns:
+            設定値
+        """
         return self.config.get(key, default)
 
 def run_bot():
     """
-    統合されたBotを起動
+    Bot起動のエントリーポイント関数
+    main.pyから呼び出される
     """
     bot = DiscordBot()
     return bot.run()

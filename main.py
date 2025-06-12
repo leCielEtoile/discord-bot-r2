@@ -1,7 +1,8 @@
 """
 main.py
 
-Discord Bot の起動エントリーポイント
+Discord Botのエントリーポイント
+アプリケーションの起動処理を担当
 """
 
 from bot.core import run_bot

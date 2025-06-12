@@ -1,7 +1,8 @@
 """
 bot/ui.py
 
-Discord Bot におけるファイル閲覧・操作用のUIコンポーネント（統合版）
+Discord UIコンポーネントの実装
+ファイル一覧表示、詳細表示、操作ボタンを提供
 """
 
 import discord
@@ -15,7 +16,7 @@ from bot.errors import StorageError, DatabaseError
 
 logger = logging.getLogger(__name__)
 
-# アイコン定義（絵文字）
+# UI表示用の絵文字アイコン定義
 ICONS = {
     "video": "🎬",
     "play": "▶️",
@@ -30,18 +31,28 @@ ICONS = {
     "name": "📄"
 }
 
-# ページあたりの表示件数（Discord UIの行制限に対応）
-FILES_PER_PAGE = 4  # 1行に2つのボタンなので4ファイル表示可能
+# Discordの制限に合わせたページング設定
+FILES_PER_PAGE = 4  # 1行に2ボタン配置で4ファイル表示可能
 
 class UnifiedFileView(discord.ui.View):
     """
-    統合ファイル表示ビュー。
-    リスト表示と詳細表示を切り替え可能。
+    ファイル一覧の統合表示ビュー
+    リスト表示と詳細表示の切り替え、ページング、ファイル操作を提供
     """
 
     def __init__(self, user_id: str, entries: List[UploadEntry], 
                  storage_service, db_service, view_mode: str = "list"):
-        super().__init__(timeout=600)
+        """
+        ビューの初期化
+        
+        Args:
+            user_id: 操作ユーザーのDiscord ID
+            entries: 表示するファイルエントリのリスト
+            storage_service: ストレージサービスインスタンス
+            db_service: データベースサービスインスタンス
+            view_mode: 初期表示モード（"list" または "detail"）
+        """
+        super().__init__(timeout=600)  # 10分でタイムアウト
         self.user_id = user_id
         self.storage = storage_service
         self.db = db_service
@@ -49,33 +60,34 @@ class UnifiedFileView(discord.ui.View):
         self.total_entries = len(entries)
         self.page = 0
         self.total_pages = max(1, math.ceil(self.total_entries / FILES_PER_PAGE))
-        self.view_mode = view_mode  # "list" or "detail"
-        self.message = None
+        self.view_mode = view_mode
+        self.message = None  # メッセージインスタンスの参照保持
         
         self._update_view()
 
     def _update_view(self):
-        """ビューの更新（ボタンの再構成）"""
+        """
+        現在の状態に基づいてUIコンポーネントを再構築
+        表示モードとページ情報に応じてボタンレイアウトを更新
+        """
         self.clear_items()
         
         if not self.entries:
             return
         
-        # 詳細表示と一覧表示で異なるページング計算
+        # 表示モードに応じたページング計算
         if self.view_mode == "detail":
             # 詳細表示：1ファイルずつ表示
             self.total_pages = len(self.entries)
-            # ページ範囲チェック
             if self.page >= self.total_pages:
                 self.page = self.total_pages - 1
         else:
-            # リスト表示：複数ファイルをページ分割
+            # リスト表示：複数ファイルを一度に表示
             self.total_pages = max(1, math.ceil(self.total_entries / FILES_PER_PAGE))
-            # ページ範囲チェック
             if self.page >= self.total_pages:
                 self.page = self.total_pages - 1
         
-        # 表示モード切替ボタン
+        # 表示モード切替ボタン（最上段）
         mode_button = discord.ui.Button(
             label=f"{ICONS['detail'] if self.view_mode == 'list' else ICONS['list']} {'詳細表示' if self.view_mode == 'list' else 'リスト表示'}", 
             style=discord.ButtonStyle.secondary, 
@@ -84,9 +96,9 @@ class UnifiedFileView(discord.ui.View):
         mode_button.callback = self.switch_view_mode
         self.add_item(mode_button)
         
-        # ページネーションボタン（複数ページある場合のみ）
+        # ページネーションボタン（複数ページある場合のみ表示）
         if self.total_pages > 1:
-            # 前のページへ
+            # 前ページボタン
             prev_button = discord.ui.Button(
                 label=ICONS['prev'], 
                 style=discord.ButtonStyle.primary, 
@@ -96,7 +108,7 @@ class UnifiedFileView(discord.ui.View):
             prev_button.callback = self.prev_page
             self.add_item(prev_button)
             
-            # ページ情報ラベル
+            # 現在ページ表示ラベル
             page_label = discord.ui.Button(
                 label=f"{self.page + 1}/{self.total_pages}", 
                 style=discord.ButtonStyle.secondary,
@@ -105,7 +117,7 @@ class UnifiedFileView(discord.ui.View):
             )
             self.add_item(page_label)
             
-            # 次のページへ
+            # 次ページボタン
             next_button = discord.ui.Button(
                 label=ICONS['next'], 
                 style=discord.ButtonStyle.primary, 
@@ -116,16 +128,16 @@ class UnifiedFileView(discord.ui.View):
             self.add_item(next_button)
         
         if self.view_mode == "list":
-            # リスト表示の項目ボタン
+            # リスト表示：ファイル一覧とアクションボタン
             start_idx = self.page * FILES_PER_PAGE
             end_idx = min(start_idx + FILES_PER_PAGE, len(self.entries))
             
-            # 1行に再生ボタンと削除ボタンを配置
+            # 各ファイルに対して再生ボタンと削除ボタンを1行に配置
             for i in range(start_idx, end_idx):
                 entry = self.entries[i]
                 row = 1 + (i - start_idx)  # row 1, 2, 3, 4
                 
-                # 動画ファイルへのリンクボタン（行の左側）
+                # 動画再生ボタン（左側）
                 play_button = discord.ui.Button(
                     label=f"{ICONS['play']} {entry.display_name[:25]}{'...' if len(entry.display_name) > 25 else ''}",
                     style=discord.ButtonStyle.primary,
@@ -134,7 +146,7 @@ class UnifiedFileView(discord.ui.View):
                 )
                 self.add_item(play_button)
                 
-                # 削除ボタン（行の右側）
+                # 削除ボタン（右側）
                 delete_button = discord.ui.Button(
                     label=f"{ICONS['delete']} 削除",
                     style=discord.ButtonStyle.danger,
@@ -145,10 +157,10 @@ class UnifiedFileView(discord.ui.View):
                 self.add_item(delete_button)
         
         elif self.view_mode == "detail" and self.entries:
-            # 詳細表示：現在のファイルのアクションボタン
+            # 詳細表示：現在のファイルの操作ボタン
             current_entry = self.entries[self.page]
             
-            # 公開URLボタン
+            # 再生ボタン
             play_button = discord.ui.Button(
                 label=f"{ICONS['play']} 再生", 
                 style=discord.ButtonStyle.success,
@@ -167,13 +179,24 @@ class UnifiedFileView(discord.ui.View):
             self.add_item(delete_button)
 
     def make_delete_callback(self, filename: str, path: str):
-        """削除ボタンのコールバック関数を生成"""
+        """
+        ファイル削除ボタンのコールバック関数を生成
+        確認ダイアログ表示と実際の削除処理を行う
+        
+        Args:
+            filename: 削除対象のファイル名
+            path: R2上のファイルパス
+            
+        Returns:
+            削除処理を行う非同期関数
+        """
         async def callback(interaction: discord.Interaction):
+            # 権限チェック：操作ユーザーが本人かどうか確認
             if str(interaction.user.id) != self.user_id:
                 await interaction.response.send_message("❌ あなたのファイルではありません。", ephemeral=True)
                 return
             
-            # 削除確認ビュー
+            # 削除確認用のUIビュー作成
             confirm_view = discord.ui.View()
             confirm_button = discord.ui.Button(
                 label=f"{ICONS['delete']} 削除する", 
@@ -185,17 +208,18 @@ class UnifiedFileView(discord.ui.View):
             )
             
             async def confirm_callback(confirm_interaction: discord.Interaction):
+                """削除確定時の処理"""
                 try:
-                    # R2とDBから削除
+                    # R2ストレージとデータベースから削除
                     self.storage.delete_file(path)
                     self.db.delete_upload(self.user_id, filename)
                     
-                    # エントリリストから削除
+                    # メモリ上のエントリリストからも削除
                     self.entries = [e for e in self.entries if e.filename != filename]
                     self.total_entries = len(self.entries)
                     self.total_pages = max(1, math.ceil(self.total_entries / FILES_PER_PAGE))
                     
-                    # ページ調整
+                    # ページ位置の調整
                     if self.page >= self.total_pages:
                         self.page = max(0, self.total_pages - 1)
                     
@@ -204,7 +228,7 @@ class UnifiedFileView(discord.ui.View):
                         view=None
                     )
                     
-                    # メインビュー更新
+                    # メインビューの更新
                     if self.message:
                         if self.total_entries == 0:
                             await self.message.edit(
@@ -231,6 +255,7 @@ class UnifiedFileView(discord.ui.View):
                     logger.error(f"Failed to delete {path}: {e}")
             
             async def cancel_callback(cancel_interaction: discord.Interaction):
+                """削除キャンセル時の処理"""
                 await cancel_interaction.response.edit_message(
                     content="❌ 削除をキャンセルしました。",
                     view=None
@@ -241,6 +266,7 @@ class UnifiedFileView(discord.ui.View):
             confirm_view.add_item(confirm_button)
             confirm_view.add_item(cancel_button)
             
+            # 確認ダイアログの表示
             await interaction.response.send_message(
                 f"⚠️ `{filename}.mp4` を削除しますか？この操作は元に戻せません。",
                 view=confirm_view,
@@ -250,13 +276,24 @@ class UnifiedFileView(discord.ui.View):
         return callback
 
     def get_list_content(self):
-        """リストビューのコンテンツを生成"""
+        """
+        リスト表示モード用のメッセージテキストを生成
+        
+        Returns:
+            str: 表示用テキスト
+        """
         if not self.entries:
             return "📂 アップロード履歴がありません。"
         return f"📂 ファイル一覧 ({self.total_entries}件) - ページ {self.page + 1}/{self.total_pages}"
 
     def get_current_embed(self):
-        """詳細ビューの現在のページに対応するEmbedを生成"""
+        """
+        詳細表示モード用のEmbedオブジェクトを生成
+        現在のページに対応するファイルの詳細情報を表示
+        
+        Returns:
+            discord.Embed: ファイル詳細情報のEmbed
+        """
         if not self.entries:
             return discord.Embed(
                 title="ファイルがありません",
@@ -264,7 +301,7 @@ class UnifiedFileView(discord.ui.View):
                 color=discord.Color.light_grey()
             )
         
-        # 詳細表示では1つのファイルを表示
+        # 現在表示中のファイル情報
         current_index = self.page
         entry = self.entries[current_index]
         
@@ -291,7 +328,16 @@ class UnifiedFileView(discord.ui.View):
         return embed
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
-        """ボタン操作が本人によるものであることを確認"""
+        """
+        UIボタン操作の権限チェック
+        操作者が当該UIの所有者であることを確認
+        
+        Args:
+            interaction: Discord インタラクション
+            
+        Returns:
+            bool: 権限がある場合True
+        """
         if str(interaction.user.id) != self.user_id:
             await interaction.response.send_message("❌ このUIはあなた専用です。", ephemeral=True)
             logger.warning(f"UI access denied for {interaction.user}")
@@ -299,7 +345,10 @@ class UnifiedFileView(discord.ui.View):
         return True
 
     async def on_timeout(self):
-        """UIタイムアウト時の処理"""
+        """
+        UIタイムアウト時の処理
+        タイムアウト後はボタンを無効化してインタラクションを防ぐ
+        """
         if self.message:
             try:
                 await self.message.edit(view=None)
@@ -308,7 +357,9 @@ class UnifiedFileView(discord.ui.View):
                 logger.warning(f"View timeout edit failed: {e}")
 
     async def switch_view_mode(self, interaction: discord.Interaction):
-        """表示モードを切り替え"""
+        """
+        表示モード切替処理（リスト⇔詳細）
+        """
         self.view_mode = "detail" if self.view_mode == "list" else "list"
         self._update_view()
         
@@ -354,6 +405,6 @@ class UnifiedFileView(discord.ui.View):
                 await interaction.response.edit_message(content=content, view=self)
 
 
-# 後方互換性のためのエイリアス
+# 後方互換性のためのエイリアス（既存コードとの互換性維持）
 FileListView = UnifiedFileView
 PagedFileView = UnifiedFileView

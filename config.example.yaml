@@ -1,63 +1,58 @@
-# YouTube Downloader Discord Bot設定ファイル
+# YouTube Downloader Discord Bot 設定ファイル
+# このファイルをconfig.yamlにコピーして実際の値を設定してください
 
-# Discord設定
+# Discord Bot設定
 # ===========================================
-# Discord Botのトークン（必須）
+# Discord Botのトークン（Discord Developer Portalで取得）
 DISCORD_TOKEN: "your-discord-bot-token"
 
-# 管理者ロール名
-# このロールを持つユーザーは管理者コマンドを実行できます
+# 管理者ロール名（setlimit, changefolder等の管理コマンドを実行可能）
 ADMIN_ROLE: "Admin"
 
-# アップロード許可ロール名
-# このロールを持つユーザーはアップロードコマンドを実行できます
+# アップロード許可ロール名（upload コマンドを実行可能）
 ALLOWED_ROLE: "Uploader"
 
-# 許可されたサーバーID
-# このBotが応答するDiscordサーバー（ギルド）のID
+# 対象サーバーID（このBotが動作するDiscordサーバーのID）
 ALLOWED_GUILD_ID: 123456789012345678
 
 
-# Cloudflare R2設定
+# Cloudflare R2 ストレージ設定
 # ===========================================
-# R2バケット名（必須）
+# R2バケット名
 R2_BUCKET: "your-r2-bucket-name"
 
-# R2エンドポイントURL（必須）
+# R2 APIエンドポイント（アカウント固有のURL）
 # 例: https://<account-id>.r2.cloudflarestorage.com
 R2_ENDPOINT: "https://<account-id>.r2.cloudflarestorage.com"
 
-# R2アクセスキー（必須）
+# R2 APIアクセスキー
 R2_ACCESS_KEY: "your-access-key"
 
-# R2シークレットキー（必須）
+# R2 APIシークレットキー
 R2_SECRET_KEY: "your-secret-key"
 
-# ファイル公開URL（必須）
+# ファイル公開用のベースURL（カスタムドメインまたはR2の公開URL）
 # 例: https://files.example.com
 R2_PUBLIC_URL: "https://files.example.com"
 
 
-# Bot設定
+# アプリケーション設定
 # ===========================================
-# デフォルトのアップロード上限
-# 各ユーザーが保存できるファイル数のデフォルト値（0は無制限）
+# 新規ユーザーのデフォルトアップロード上限（0=無制限）
 DEFAULT_UPLOAD_LIMIT: 5
 
 
 # ログ設定
 # ===========================================
-# コンソールログレベル
-# DEBUG: 詳細な実行情報（開発・トラブルシューティング用）
-# INFO: 一般的な情報（通常運用推奨）
-# WARNING: 警告のみ（本番運用推奨）
+# コンソール出力のログレベル
+# DEBUG: 詳細なデバッグ情報（開発時推奨）
+# INFO: 一般的な動作情報（本番運用推奨）
+# WARNING: 警告以上のみ
 # ERROR: エラーのみ
 CONSOLE_LOG_LEVEL: "INFO"
 
-# ファイルログレベル
-# ファイルに出力するログのレベル（通常はDEBUGを推奨）
+# ファイル出力のログレベル（通常はDEBUGに設定して詳細ログを保存）
 FILE_LOG_LEVEL: "DEBUG"
 
-# ログディレクトリ
-# ログファイルを保存するディレクトリパス
+# ログファイル保存ディレクトリ
 LOG_DIR: "logs"

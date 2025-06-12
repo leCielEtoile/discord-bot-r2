@@ -1,7 +1,7 @@
-# ベースイメージ
+# マルチステージビルドでイメージサイズを最適化
 FROM python:3.11-slim AS base
 
-# 依存関係インストール用ステージ
+# Python依存関係のビルドステージ
 FROM base AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
@@ -10,42 +10,42 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /install
 COPY requirements.txt .
 
-# PyYAMLを明示的に追加
+# PyYAMLを明示的に追加（設定ファイル読み込みに必要）
 RUN echo "PyYAML>=6.0" >> requirements.txt
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 最終イメージ
+# 実行環境の構築ステージ
 FROM base
+# システムレベルの必要なパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# 依存関係をコピー
+# Pythonライブラリを前ステージからコピー
 COPY --from=builder /install /usr/local
 
-# yt-dlpのインストール
+# yt-dlpの最新版を直接ダウンロードしてインストール
 RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
     && chmod a+rx /usr/local/bin/yt-dlp
 
-# タイムゾーン設定
+# タイムゾーンを日本時間に設定
 ENV TZ=Asia/Tokyo
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# アプリケーションのコピー
+# アプリケーションファイルをコピー
 WORKDIR /app
 COPY . .
 
-# 実行権限付与
+# エントリーポイントスクリプトに実行権限を付与
 RUN chmod +x entrypoint.sh
 
-# 設定ファイルパス指定（環境変数でオーバーライド可能）
+# 環境変数の設定（docker-compose.ymlで上書き可能）
 ENV CONFIG_PATH=/app/config.yaml
 ENV PYTHONPATH=/app
 
-# ログディレクトリとデータディレクトリを作成
-# 権限設定はdocker-compose.ymlのuserディレクティブで行う
-# これにより、ホスト側のユーザー権限で作成される
+# 必要なディレクトリを事前作成
+# 実際の権限設定はdocker-compose.ymlのuserディレクティブで制御
 RUN mkdir -p /app/logs /app/data /app/data/cache
 
 ENTRYPOINT ["./entrypoint.sh"]
