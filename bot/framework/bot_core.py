@@ -1,8 +1,8 @@
 """
-core.py
+bot/framework/bot_core.py
 
-Discord Bot の初期化・起動処理
-設定読み込み、ログ設定、サービス初期化、コマンド管理を一元化
+統合されたBot初期化フレームワーク
+設定読み込み、ログ設定、サービス初期化を一元管理
 """
 
 import discord
@@ -14,7 +14,7 @@ import logging.handlers
 import os
 import yaml
 from datetime import datetime
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from bot.framework.command_base import CommandRegistry
 from bot.commands.admin_commands import setup_admin_commands
@@ -23,9 +23,9 @@ from bot.commands.file_commands import setup_file_commands
 from bot.impl.r2_service import R2StorageService
 from bot.impl.sqlite_service import SQLiteDatabaseService
 
-class DiscordBot:
+class BotFramework:
     """
-    統合されたDiscord Botクラス
+    統合されたBotフレームワーク
     設定・ログ・サービス・コマンドを一元管理
     """
     
@@ -78,6 +78,7 @@ class DiscordBot:
         for key in self.config:
             env_value = os.getenv(key)
             if env_value:
+                # 型変換
                 if isinstance(self.config[key], int) and env_value.isdigit():
                     self.config[key] = int(env_value)
                 else:
@@ -236,10 +237,7 @@ class DiscordBot:
             self.client.run(self.config["DISCORD_TOKEN"])
             
         except Exception as e:
-            if self.logger:
-                self.logger.critical(f"Critical error: {e}", exc_info=True)
-            else:
-                print(f"Critical error: {e}")
+            self.logger.critical(f"Critical error: {e}", exc_info=True)
             return 1
         
         return 0
@@ -247,10 +245,3 @@ class DiscordBot:
     def get_config(self, key: str, default: Any = None) -> Any:
         """設定値を取得"""
         return self.config.get(key, default)
-
-def run_bot():
-    """
-    統合されたBotを起動
-    """
-    bot = DiscordBot()
-    return bot.run()

@@ -33,7 +33,7 @@ logs/
 data/
 
 # 設定ファイル（例は含め、実際の設定は除外）
-config.json
+config.yaml
 .env
 
 # OS固有のファイル
