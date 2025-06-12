@@ -1,7 +1,7 @@
 """
 bot/commands/file_commands.py
 
-ファイル一覧表示や操作用コマンドの実装
+ファイル一覧表示や操作用コマンドの実装（統合UI対応版）
 """
 
 import discord
@@ -9,7 +9,7 @@ from discord import app_commands
 import logging
 
 from bot.services import DatabaseService, StorageService
-from bot.ui import FileListView, PagedFileView
+from bot.ui import UnifiedFileView
 from bot.errors import handle_bot_error
 
 logger = logging.getLogger(__name__)
@@ -37,7 +37,7 @@ def setup_file_commands(
     async def myfiles(interaction: discord.Interaction, view_type: str = "list"):
         """
         自分の保存フォルダにアップロードされた動画を一覧表示する。
-        ページネーションと削除UIが含まれる。
+        統合UIでページネーションと削除機能が含まれる。
         
         Args:
             interaction: Discordインタラクション
@@ -61,16 +61,16 @@ def setup_file_commands(
                 logger.info(f"No files found for {interaction.user}")
                 return
             
-            # 表示タイプに応じたビューを作成
+            # 統合ビューを作成
             try:
+                view = UnifiedFileView(user_id, entries, storage_service, db_service, view_type)
+                
                 if view_type == "detail":
                     # 詳細表示モード
-                    view = PagedFileView(user_id, entries, storage_service, db_service)
                     embed = view.get_current_embed()
                     response = await interaction.followup.send(embed=embed, view=view, ephemeral=True)
                 else:
                     # リスト表示モード（デフォルト）
-                    view = FileListView(user_id, entries, storage_service, db_service)
                     content = view.get_list_content()
                     response = await interaction.followup.send(content=content, view=view, ephemeral=True)
                 

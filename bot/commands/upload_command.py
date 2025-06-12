@@ -16,11 +16,24 @@ import logging
 from bot.models import UserMapping, UploadEntry
 from bot.services import StorageService, DatabaseService
 from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec
-from bot.utils import is_valid_filename, has_permission
+from bot.commands.admin_commands import has_permission  # utilsから移行
 from bot.config import DEFAULT_UPLOAD_LIMIT
 from bot.errors import UploadError, handle_bot_error
 
 logger = logging.getLogger(__name__)
+
+def is_valid_filename(name: str) -> bool:
+    """
+    ファイル名が英数字、アンダースコア、ハイフンのみで構成されているかを検証する。
+
+    Args:
+        name: 検証対象のファイル名文字列
+
+    Returns:
+        True: 許可された形式
+        False: 禁止された形式
+    """
+    return re.fullmatch(r"[a-zA-Z0-9_\-]+", name) is not None
 
 class UploadCommand:
     """

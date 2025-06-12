@@ -12,11 +12,39 @@ import logging
 
 from bot.services import DatabaseService
 from bot.models import UserMapping
-from bot.utils import is_admin
 from bot.errors import PermissionError, handle_bot_error
-from bot.config import DEFAULT_UPLOAD_LIMIT
+from bot.config import DEFAULT_UPLOAD_LIMIT, ADMIN_ROLE, ALLOWED_ROLE
 
 logger = logging.getLogger(__name__)
+
+def has_permission(member: discord.Member) -> bool:
+    """
+    Discord メンバーが設定された許可ロールを保有しているかを判定する。
+
+    Args:
+        member: Discord メンバーオブジェクト
+
+    Returns:
+        True: 権限あり
+        False: 権限なし
+    """
+    return any(role.name == ALLOWED_ROLE for role in member.roles)
+
+def is_admin(user: discord.abc.User | discord.Member) -> bool:
+    """
+    ユーザーが管理者ロール（ADMIN_ROLE）を持っているかを判定。
+
+    Args:
+        user: チェック対象の Discord ユーザー or メンバー
+
+    Returns:
+        True: 管理者
+        False: 一般ユーザー
+    """
+    # メンバー型でロール確認ができる場合のみ
+    if hasattr(user, "roles"):
+        return any(role.name == ADMIN_ROLE for role in user.roles)
+    return False
 
 def setup_admin_commands(tree: app_commands.CommandTree, db_service: DatabaseService):
     """
