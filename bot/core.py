@@ -242,6 +242,11 @@ class DiscordBot:
         setup_upload_command(self.command_registry, self.data_manager, self.storage_service)
         # ファイル操作コマンドの登録
         setup_file_commands(self.command_registry, self.data_manager, self.storage_service)
+        # 管理者専用コマンド
+        from bot.commands.admin_upload_command import setup_admin_upload_command
+        from bot.commands.admin_files_command import setup_admin_files_command
+        setup_admin_upload_command(self.command_registry, self.data_manager, self.storage_service)
+        setup_admin_files_command(self.command_registry, self.data_manager, self.storage_service)
         
         self.logger.debug("All commands registered to framework")
     
