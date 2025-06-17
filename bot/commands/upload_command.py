@@ -1,8 +1,9 @@
 """
 bot/commands/upload_command.py
 
-YouTube動画アップロード機能の実装
+YouTube動画アップロード機能の実装（URL正規化対応）
 動画ダウンロード、変換、ストレージアップロード、データベース記録を統合
+プレイリストURL対策を含む
 """
 
 import discord
@@ -15,7 +16,7 @@ import logging
 
 from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
 from bot.data import DataManager, UserMapping, UploadEntry
-from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec
+from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec, normalize_youtube_url, extract_video_id
 from bot.errors import UploadError
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def is_valid_filename(name: str) -> bool:
 class UploadCommand(BaseCommand):
     """
     YouTube動画をダウンロードしてR2ストレージにアップロードするコマンド
+    プレイリストURL正規化対応済み
     """
     
     def __init__(self, data_manager: DataManager, storage_service):
@@ -76,6 +78,14 @@ class UploadCommand(BaseCommand):
         if not is_valid_filename(filename):
             raise UploadError("ファイル名に不正な文字が含まれています。")
         
+        # URLを正規化してプレイリスト情報を除去
+        normalized_url = normalize_youtube_url(url)
+        video_id = extract_video_id(normalized_url)
+        
+        # URLが正規化されたかログに記録
+        if normalized_url != url:
+            logger.info(f"URL normalized: {url} -> {normalized_url} (video_id: {video_id})")
+        
         # ユーザー設定の取得または作成
         discord_id = str(interaction.user.id)
         user_config = await self._get_or_create_user_config(discord_id, interaction.user.name)
@@ -92,19 +102,23 @@ class UploadCommand(BaseCommand):
         if limit > 0 and len(existing_files) >= limit:
             raise UploadError("アップロード上限に達しました。古いファイルを削除してください。")
         
-        # 処理開始の通知
-        await interaction.response.send_message("📥 ダウンロードを開始します...", ephemeral=True)
+        # 処理開始の通知（正規化された情報を含む）
+        status_message = "📥 ダウンロードを開始します..."
+        if normalized_url != url:
+            status_message += f"\n🔗 URL正規化済み（動画ID: {video_id}）"
+        
+        await interaction.response.send_message(status_message, ephemeral=True)
         
         # ファイルパスの準備
         local_path = f"/tmp/{filename}.mp4"
         r2_path = f"{user_config.folder_name}/{filename}.mp4"
         
         try:
-            # YouTube動画のタイトル取得
-            title = await asyncio.to_thread(get_video_title, url)
+            # YouTube動画のタイトル取得（正規化されたURLを使用）
+            title = await asyncio.to_thread(get_video_title, normalized_url)
             
-            # 動画のダウンロード（非同期実行でブロッキングを回避）
-            download_success = await asyncio.to_thread(download_video, url, local_path)
+            # 動画のダウンロード（正規化されたURLを使用）
+            download_success = await asyncio.to_thread(download_video, normalized_url, local_path)
             if not download_success:
                 raise UploadError("ダウンロードに失敗しました。")
             
@@ -130,10 +144,11 @@ class UploadCommand(BaseCommand):
             public_url = self.storage.generate_public_url(r2_path)
             codec_info = f"🎬 動画コーデック: {video_codec}, 🔊 音声コーデック: {audio_codec}"
             
-            await interaction.followup.send(
-                f"✅ アップロード完了！\n{codec_info}\n🔗 公開URL: {public_url}", 
-                ephemeral=True
-            )
+            completion_message = f"✅ アップロード完了！\n{codec_info}\n🔗 公開URL: {public_url}"
+            if normalized_url != url:
+                completion_message += f"\n📹 動画ID: {video_id}"
+            
+            await interaction.followup.send(completion_message, ephemeral=True)
             
         finally:
             # 一時ファイルのクリーンアップ
@@ -191,7 +206,7 @@ class UploadCommand(BaseCommand):
         """Discord APIにコマンドを登録"""
         @tree.command(name="upload", description="YouTube動画をダウンロードしてR2に保存します")
         @app_commands.describe(
-            url="YouTube動画のURL",
+            url="YouTube動画のURL（プレイリストURLも自動で単一動画に変換されます）",
             filename="保存するファイル名（拡張子なし）"
         )
         async def upload(interaction: discord.Interaction, url: str, filename: str):

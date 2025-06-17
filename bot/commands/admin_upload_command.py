@@ -15,7 +15,7 @@ import logging
 
 from bot.framework.command_base import BaseCommand, PermissionLevel, CommandRegistry
 from bot.data import DataManager, UploadEntry
-from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec
+from bot.youtube import get_video_title, download_video, validate_youtube_url, check_video_codec, normalize_youtube_url, extract_video_id
 from bot.errors import UploadError
 
 logger = logging.getLogger(__name__)
@@ -95,6 +95,12 @@ class AdminUploadCommand(BaseCommand):
         if not is_valid_path_segment(filename):
             raise UploadError("ファイル名に不正な文字が含まれています。英数字、アンダースコア、ハイフンのみ使用可能です。")
         
+        video_id = extract_video_id(normalize_youtube_url)
+        
+        # URLが正規化されたかログに記録
+        if normalize_youtube_url != url:
+            logger.info(f"Admin upload URL normalized: {url} -> {normalize_youtube_url} (video_id: {video_id})")
+        
         # パスを正規化（先頭・末尾のスラッシュを除去）
         normalized_path = path.strip("/")
         
@@ -105,20 +111,21 @@ class AdminUploadCommand(BaseCommand):
         await self._check_file_exists(r2_path)
         
         # 処理開始の通知
-        await interaction.response.send_message(
-            f"📥 管理者アップロードを開始します...\n📂 保存先: `{r2_path}`", 
-            ephemeral=True
-        )
+        status_message = f"📥 管理者アップロードを開始します...\n📂 保存先: `{r2_path}`"
+        if normalize_youtube_url != url:
+            status_message += f"\n🔗 URL正規化済み（動画ID: {video_id}）"
+        
+        await interaction.response.send_message(status_message, ephemeral=True)
         
         # ローカル一時ファイルパス
         local_path = f"/tmp/admin_{filename}.mp4"
         
         try:
-            # YouTube動画のタイトル取得
-            title = await asyncio.to_thread(get_video_title, url)
+            # YouTube動画のタイトル取得（正規化されたURLを使用）
+            title = await asyncio.to_thread(get_video_title, normalize_youtube_url)
             
-            # 動画のダウンロード
-            download_success = await asyncio.to_thread(download_video, url, local_path)
+            # 動画のダウンロード（正規化されたURLを使用）
+            download_success = await asyncio.to_thread(download_video, normalize_youtube_url, local_path)
             if not download_success:
                 raise UploadError("ダウンロードに失敗しました。")
             
@@ -144,13 +151,16 @@ class AdminUploadCommand(BaseCommand):
             public_url = self.storage.generate_public_url(r2_path)
             codec_info = f"🎬 動画コーデック: {video_codec}, 🔊 音声コーデック: {audio_codec}"
             
-            await interaction.followup.send(
+            completion_message = (
                 f"✅ 管理者アップロード完了！\n"
                 f"📂 保存先: `{r2_path}`\n"
                 f"{codec_info}\n"
-                f"🔗 公開URL: {public_url}", 
-                ephemeral=True
+                f"🔗 公開URL: {public_url}"
             )
+            if normalize_youtube_url != url:
+                completion_message += f"\n📹 動画ID: {video_id}"
+            
+            await interaction.followup.send(completion_message, ephemeral=True)
             
             logger.info(f"Admin upload completed by {interaction.user}: {r2_path}")
             
@@ -198,7 +208,7 @@ class AdminUploadCommand(BaseCommand):
             description="管理者限定: パスを指定してYouTube動画をR2に保存します"
         )
         @app_commands.describe(
-            url="YouTube動画のURL",
+            url="YouTube動画のURL（プレイリストURLも自動で単一動画に変換されます）",
             path="アップロード先パス（例: admin/uploads）",
             filename="保存するファイル名（拡張子なし）"
         )

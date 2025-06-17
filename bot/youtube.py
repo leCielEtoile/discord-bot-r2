@@ -3,19 +3,120 @@ bot/youtube.py
 
 YouTube動画のダウンロードと処理を行うモジュール
 yt-dlpとFFmpegを使用してH.264/AACコーデックに最適化
+プレイリストURL対策とURL正規化機能を含む
 """
 
 import subprocess
 import logging
 import os
 import json
+import re
 from typing import Tuple, Optional
+from urllib.parse import urlparse, parse_qs
 
 logger = logging.getLogger(__name__)
+
+def normalize_youtube_url(url: str) -> str:
+    """
+    YouTube URLを正規化してプレイリスト情報を除去
+    v=パラメータのみを抽出して単一動画URLに変換
+    
+    Args:
+        url: 正規化対象のYouTube URL
+        
+    Returns:
+        str: 正規化された単一動画URL
+        
+    Examples:
+        >>> normalize_youtube_url("https://www.youtube.com/watch?v=dQw4w9WgXcQ&list=PLxxxxxx")
+        "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+        
+        >>> normalize_youtube_url("https://youtu.be/dQw4w9WgXcQ?list=PLxxxxxx")
+        "https://youtu.be/dQw4w9WgXcQ"
+    """
+    try:
+        # URLの解析
+        parsed = urlparse(url)
+        
+        # youtu.be 短縮URL形式の処理
+        if parsed.netloc in ['youtu.be', 'www.youtu.be']:
+            # パスから動画IDを抽出 (/dQw4w9WgXcQ 形式)
+            video_id = parsed.path.strip('/')
+            if video_id:
+                return f"https://youtu.be/{video_id}"
+        
+        # youtube.com 標準URL形式の処理
+        elif parsed.netloc in ['youtube.com', 'www.youtube.com', 'm.youtube.com']:
+            # クエリパラメータを解析
+            query_params = parse_qs(parsed.query)
+            
+            # v=パラメータから動画IDを抽出
+            if 'v' in query_params and query_params['v']:
+                video_id = query_params['v'][0]
+                return f"https://www.youtube.com/watch?v={video_id}"
+        
+        # 正規化できない場合は元のURLを返す
+        logger.warning(f"Could not normalize URL: {url}")
+        return url
+        
+    except Exception as e:
+        logger.warning(f"URL normalization failed for {url}: {e}")
+        return url
+
+def validate_youtube_url(url: str) -> bool:
+    """
+    URLがYouTubeの有効なURLかどうかを検証
+    
+    Args:
+        url: 検証対象のURL文字列
+        
+    Returns:
+        bool: YouTubeのURLである場合True
+    """
+    # 基本的なYouTube URLパターンの確認
+    youtube_patterns = [
+        r"^(https?://)?(www\.)?(youtube\.com|youtu\.be|m\.youtube\.com)/",
+        r"^(https?://)?youtube\.com/watch\?.*v=",
+        r"^(https?://)?youtu\.be/[a-zA-Z0-9_-]+"
+    ]
+    
+    return any(re.search(pattern, url) for pattern in youtube_patterns)
+
+def extract_video_id(url: str) -> str:
+    """
+    YouTube URLから動画IDを抽出
+    
+    Args:
+        url: YouTube URL
+        
+    Returns:
+        str: 動画ID（抽出できない場合は空文字列）
+    """
+    try:
+        # 正規化されたURLから動画IDを抽出
+        normalized_url = normalize_youtube_url(url)
+        parsed = urlparse(normalized_url)
+        
+        # youtu.be形式
+        if parsed.netloc in ['youtu.be', 'www.youtu.be']:
+            return parsed.path.strip('/')
+        
+        # youtube.com形式
+        elif parsed.netloc in ['youtube.com', 'www.youtube.com', 'm.youtube.com']:
+            query_params = parse_qs(parsed.query)
+            if 'v' in query_params and query_params['v']:
+                return query_params['v'][0]
+        
+        return ""
+        
+    except Exception as e:
+        logger.warning(f"Video ID extraction failed for {url}: {e}")
+        return ""
 
 def get_video_title(url: str) -> str:
     """
     YouTube動画のタイトルを取得
+    URL正規化を適用してプレイリスト情報を除去
     
     Args:
         url: YouTube動画のURL
@@ -24,13 +125,18 @@ def get_video_title(url: str) -> str:
         str: 動画タイトル（取得失敗時は「無題」を返す）
     """
     try:
+        # URLを正規化してプレイリスト情報を除去
+        normalized_url = normalize_youtube_url(url)
+        
         result = subprocess.run(
-            ["yt-dlp", "--get-title", url],
+            ["yt-dlp", "--get-title", normalized_url],
             capture_output=True, text=True, check=True, timeout=30
         )
-        return result.stdout.strip()
+        title = result.stdout.strip()
+        logger.info(f"Retrieved title: {title} for URL: {normalized_url}")
+        return title
     except Exception as e:
-        logger.warning(f"Title fetch failed: {e}")
+        logger.warning(f"Title fetch failed for {url}: {e}")
         return "無題"
 
 def check_video_codec(file_path: str) -> Tuple[str, str]:
@@ -114,6 +220,7 @@ def download_video(url: str, output_path: str, max_height: int = 720) -> bool:
     """
     YouTube動画をダウンロードしてMP4形式で保存
     H.264/AACコーデックを優先的に選択し、必要に応じて変換
+    URL正規化を適用してプレイリスト情報を除去
     
     Args:
         url: ダウンロード対象のYouTube URL
@@ -124,6 +231,12 @@ def download_video(url: str, output_path: str, max_height: int = 720) -> bool:
         bool: ダウンロード成功時True
     """
     try:
+        # URLを正規化してプレイリスト情報を除去
+        normalized_url = normalize_youtube_url(url)
+        video_id = extract_video_id(normalized_url)
+        
+        logger.info(f"Downloading video: {video_id} from normalized URL: {normalized_url}")
+        
         # yt-dlpフォーマット指定：Web再生に適したコーデックを優先選択
         format_spec = (
             # 1. 720p以下のMP4コンテナ、H.264+AAC
@@ -136,13 +249,14 @@ def download_video(url: str, output_path: str, max_height: int = 720) -> bool:
             "best[height<=720]"
         )
         
-        # yt-dlpでダウンロード実行
+        # yt-dlpでダウンロード実行（正規化されたURLを使用）
         subprocess.run([
             "yt-dlp",
             "-f", format_spec,
             "--merge-output-format", "mp4",  # 最終的にMP4に統合
+            "--no-playlist",                 # プレイリスト無効化
             "-o", output_path,
-            url
+            normalized_url
         ], check=True, timeout=240)  # 4分のタイムアウト
         
         # ダウンロード後のコーデック確認
@@ -176,17 +290,3 @@ def download_video(url: str, output_path: str, max_height: int = 720) -> bool:
     except Exception as e:
         logger.error(f"Unexpected error: {e}")
         return False
-
-def validate_youtube_url(url: str) -> bool:
-    """
-    URLがYouTubeの有効なURLかどうかを検証
-    
-    Args:
-        url: 検証対象のURL文字列
-        
-    Returns:
-        bool: YouTubeのURLである場合True
-    """
-    import re
-    # YouTube URLの正規表現パターンマッチング
-    return bool(re.match(r"^(https?://)?(www\.)?(youtube\.com|youtu\.be)/", url))
