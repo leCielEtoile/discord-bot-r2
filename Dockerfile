@@ -27,7 +27,6 @@ ENV PYTHONUNBUFFERED=1
 
 # requirements.txtを先にコピー（依存関係変更時のみこのレイヤーが再ビルド）
 COPY requirements.txt .
-RUN echo "PyYAML>=6.0" >> requirements.txt
 
 # pipとsetuptoolsを最新版にアップグレード（キャッシュマウント使用）
 RUN --mount=type=cache,target=/root/.cache/pip \
