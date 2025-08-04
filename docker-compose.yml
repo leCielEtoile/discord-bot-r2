@@ -27,9 +27,6 @@ services:
       - DB_PATH=/app/data/db.sqlite3
       - XDG_CACHE_HOME=/app/data/cache
     
-    # コンテナ実行ユーザーをホストのユーザーに合わせる
-    user: "${UID:-1000}:${GID:-1000}"
-    
     # コンテナの健全性チェック
     healthcheck:
       test: ["CMD", "ps", "aux", "|", "grep", "python", "|", "grep", "-v", "grep"]

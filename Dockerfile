@@ -45,7 +45,6 @@ ENV CONFIG_PATH=/app/config.yaml
 ENV PYTHONPATH=/app
 
 # 必要なディレクトリを事前作成
-# 実際の権限設定はdocker-compose.ymlのuserディレクティブで制御
 RUN mkdir -p /app/logs /app/data /app/data/cache
 
 ENTRYPOINT ["./entrypoint.sh"]
