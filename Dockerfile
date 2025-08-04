@@ -1,50 +1,82 @@
-# マルチステージビルドでイメージサイズを最適化
+# syntax=docker/dockerfile:1
+# GitHub Container Registry最適化版Dockerfile
 FROM python:3.11-slim AS base
 
-# Python依存関係のビルドステージ
-FROM base AS builder
+# GitHub Container Registryメタデータ
+LABEL org.opencontainers.image.source="https://github.com/leCielEtoile/discord-bot-r2"
+LABEL org.opencontainers.image.description="YouTube Downloader Discord Bot"
+LABEL org.opencontainers.image.licenses="MIT"
+
+# 依存関係ステージ（最もキャッシュ効果が高い部分）
+FROM base AS dependencies
+LABEL stage=dependencies
+
+# ビルドに必要な最小限のシステムパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    && rm -rf /var/lib/apt/lists/*
+    curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
 WORKDIR /install
+
+# pipの動作最適化設定
+ENV PIP_DISABLE_PIP_VERSION_CHECK=1
+ENV PIP_DEFAULT_TIMEOUT=100
+ENV PYTHONUNBUFFERED=1
+
+# requirements.txtを先にコピー（依存関係変更時のみこのレイヤーが再ビルド）
 COPY requirements.txt .
-
-# PyYAMLを明示的に追加（設定ファイル読み込みに必要）
 RUN echo "PyYAML>=6.0" >> requirements.txt
-RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
-# 実行環境の構築ステージ
-FROM base
-# システムレベルの必要なパッケージをインストール
+# pipとsetuptoolsを最新版にアップグレード（キャッシュマウント使用）
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --upgrade pip setuptools wheel
+
+# Pythonパッケージをインストール（GitHub Actionsキャッシュ対応）
+RUN --mount=type=cache,target=/root/.cache/pip \
+    pip install --prefix=/install \
+    --prefer-binary \
+    --no-warn-script-location \
+    --find-links https://wheel-index.org \
+    -r requirements.txt
+
+# yt-dlpの最新版を直接ダウンロード
+RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /install/bin/yt-dlp \
+    && chmod a+rx /install/bin/yt-dlp
+
+# 実行環境ステージ
+FROM base AS runtime
+
+# 実行時に必要な最小限のパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
 
-# Pythonライブラリを前ステージからコピー
-COPY --from=builder /install /usr/local
+# 依存関係ステージからPythonライブラリとyt-dlpをコピー
+COPY --from=dependencies /install /usr/local
 
-# yt-dlpの最新版を直接ダウンロードしてインストール
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp \
-    && chmod a+rx /usr/local/bin/yt-dlp
-
-# タイムゾーンを日本時間に設定
+# 環境設定
 ENV TZ=Asia/Tokyo
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
-
-# アプリケーションファイルをコピー
-WORKDIR /app
-COPY . .
-
-# エントリーポイントスクリプトに実行権限を付与
-RUN chmod +x entrypoint.sh
-
-# 環境変数の設定（docker-compose.ymlで上書き可能）
 ENV CONFIG_PATH=/app/config.yaml
 ENV PYTHONPATH=/app
+ENV PYTHONUNBUFFERED=1
 
-# 必要なディレクトリを事前作成
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# アプリケーションディレクトリの準備
+WORKDIR /app
 RUN mkdir -p /app/logs /app/data /app/data/cache
+
+# アプリケーションコードのコピー
+COPY . .
+RUN chmod +x entrypoint.sh
+
+# ビルド情報をラベルに追加（GitHub Actionsで設定される）
+ARG BUILD_DATE
+ARG VCS_REF
+LABEL org.opencontainers.image.created=$BUILD_DATE
+LABEL org.opencontainers.image.revision=$VCS_REF
 
 ENTRYPOINT ["./entrypoint.sh"]

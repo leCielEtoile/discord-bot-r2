@@ -1,8 +1,16 @@
 services:
   discord-bot:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    image: ghcr.io/leCielEtoile/discord-bot-r2:latest
+    
+    # 🔧 開発時やカスタムビルドが必要な場合
+    # build:
+    #   context: .
+    #   dockerfile: Dockerfile
+    #   cache_from:
+    #     - ghcr.io/leCielEtoile/discord-bot-r2:latest
+    #   args:
+    #     BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+    #     VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
     container_name: discord-ytdl-bot
     restart: unless-stopped
     volumes:
@@ -34,3 +42,30 @@ services:
       timeout: 10s       # 10秒でタイムアウト
       retries: 3         # 3回失敗で異常判定
       start_period: 10s  # 起動から10秒は猶予期間
+
+# 開発用プロファイル（ローカルビルド）
+  discord-bot-dev:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      cache_from:
+        - ghcr.io/YOUR_USERNAME/YOUR_REPOSITORY:latest
+        - ghcr.io/YOUR_USERNAME/YOUR_REPOSITORY:develop
+      args:
+        BUILD_DATE: ${BUILD_DATE:-$(date -u +'%Y-%m-%dT%H:%M:%SZ')}
+        VCS_REF: ${VCS_REF:-$(git rev-parse --short HEAD)}
+    
+    container_name: discord-ytdl-bot-dev
+    restart: unless-stopped
+    profiles: ["dev"]  # docker-compose --profile dev up で起動
+    
+    volumes:
+      - ./config.yaml:/app/config.yaml:ro
+      - ./data:/app/data
+      - ./logs:/app/logs
+    
+    environment:
+      - CONFIG_PATH=/app/config.yaml
+      - LOG_LEVEL=DEBUG  # 詳細ログ
+      - DB_PATH=/app/data/db.sqlite3
+      - XDG_CACHE_HOME=/app/data/cache
