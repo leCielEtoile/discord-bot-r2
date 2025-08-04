@@ -33,6 +33,9 @@ def normalize_youtube_url(url: str) -> str:
         
         >>> normalize_youtube_url("https://youtu.be/dQw4w9WgXcQ?list=PLxxxxxx")
         "https://youtu.be/dQw4w9WgXcQ"
+        
+        >>> normalize_youtube_url("https://www.youtube.com/shorts/ABC123defgh")
+        "https://www.youtube.com/watch?v=ABC123defgh"
     """
     try:
         # URLの解析
@@ -47,13 +50,22 @@ def normalize_youtube_url(url: str) -> str:
         
         # youtube.com 標準URL形式の処理
         elif parsed.netloc in ['youtube.com', 'www.youtube.com', 'm.youtube.com']:
-            # クエリパラメータを解析
-            query_params = parse_qs(parsed.query)
+            # YouTube Shorts形式の処理
+            if parsed.path.startswith('/shorts/'):
+                # /shorts/動画ID から動画IDを抽出
+                video_id = parsed.path.replace('/shorts/', '')
+                if video_id:
+                    return f"https://www.youtube.com/watch?v={video_id}"
             
-            # v=パラメータから動画IDを抽出
-            if 'v' in query_params and query_params['v']:
-                video_id = query_params['v'][0]
-                return f"https://www.youtube.com/watch?v={video_id}"
+            # 通常のwatch形式の処理
+            elif parsed.path.startswith('/watch'):
+                # クエリパラメータを解析
+                query_params = parse_qs(parsed.query)
+                
+                # v=パラメータから動画IDを抽出
+                if 'v' in query_params and query_params['v']:
+                    video_id = query_params['v'][0]
+                    return f"https://www.youtube.com/watch?v={video_id}"
         
         # 正規化できない場合は元のURLを返す
         logger.warning(f"Could not normalize URL: {url}")
@@ -128,10 +140,14 @@ def get_video_title(url: str) -> str:
         # URLを正規化してプレイリスト情報を除去
         normalized_url = normalize_youtube_url(url)
         
-        result = subprocess.run(
-            ["yt-dlp", "--get-title", normalized_url],
-            capture_output=True, text=True, check=True, timeout=30
-        )
+        result = subprocess.run([
+            "yt-dlp", 
+            "--get-title",
+            "--force-ipv4",  # IPv4強制使用
+            "--sleep-interval", "1",
+            normalized_url
+        ], capture_output=True, text=True, check=True, timeout=30)
+        
         title = result.stdout.strip()
         logger.info(f"Retrieved title: {title} for URL: {normalized_url}")
         return title
@@ -249,15 +265,24 @@ def download_video(url: str, output_path: str, max_height: int = 720) -> bool:
             "best[height<=720]"
         )
         
-        # yt-dlpでダウンロード実行（正規化されたURLを使用）
-        subprocess.run([
+        # yt-dlpコマンドライン引数
+        ytdlp_args = [
             "yt-dlp",
             "-f", format_spec,
             "--merge-output-format", "mp4",  # 最終的にMP4に統合
             "--no-playlist",                 # プレイリスト無効化
+            "--force-ipv4",                  # IPv4強制使用
+            "--extractor-retries", "3",      # エクストラクター再試行回数
+            "--fragment-retries", "3",       # フラグメント再試行回数
+            "--retry-sleep", "2",            # 再試行間隔（秒）
+            "--sleep-interval", "1",         # リクエスト間隔
+            "--max-sleep-interval", "3",     # 最大スリープ間隔
             "-o", output_path,
             normalized_url
-        ], check=True, timeout=240)  # 4分のタイムアウト
+        ]
+        
+        # yt-dlpでダウンロード実行（正規化されたURLを使用）
+        subprocess.run(ytdlp_args, check=True, timeout=300)  # 5分のタイムアウト
         
         # ダウンロード後のコーデック確認
         video_codec, audio_codec = check_video_codec(output_path)
