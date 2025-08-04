@@ -48,7 +48,7 @@ jobs:
         labels: |
           org.opencontainers.image.description=YouTube Downloader Discord Bot
           org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          org.opencontainers.image.licenses=MIT
+          org.opencontainers.image.licenses=BSD 3-Clause
     
     - name: Dockerイメージをビルドしてプッシュ
       uses: docker/build-push-action@v5

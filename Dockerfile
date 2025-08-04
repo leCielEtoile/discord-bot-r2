@@ -5,7 +5,7 @@ FROM python:3.11-slim AS base
 # GitHub Container Registryメタデータ
 LABEL org.opencontainers.image.source="https://github.com/leCielEtoile/discord-bot-r2"
 LABEL org.opencontainers.image.description="YouTube Downloader Discord Bot"
-LABEL org.opencontainers.image.licenses="MIT"
+LABEL org.opencontainers.image.licenses="BSD 3-Clause"
 
 # 依存関係ステージ（最もキャッシュ効果が高い部分）
 FROM base AS dependencies

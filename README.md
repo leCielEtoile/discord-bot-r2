@@ -284,7 +284,7 @@ tail -f logs/bot-$(date +%Y-%m-%d).log
 
 ## ライセンス
 
-MIT License
+BSD 3-Clause License
 
 ## 貢献
 
