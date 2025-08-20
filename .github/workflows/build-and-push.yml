@@ -106,6 +106,8 @@ jobs:
       contents: read            # リポジトリの読み取り
       packages: write          # Container Registryへの書き込み
       actions: read           # 他のアクションの状況確認
+      id-token: write         # OIDC認証用（セキュリティ強化）
+      attestations: write     # 証明書作成用
     # このジョブの出力を他のジョブで使用できるように定義
     outputs:
       image-digest: ${{ steps.build.outputs.digest }}        # ビルドしたイメージのダイジェスト
@@ -132,6 +134,18 @@ jobs:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}          # GitHubのユーザー名
         password: ${{ secrets.GITHUB_TOKEN }}  # GitHubが自動で提供するトークン
+        logout: false                          # ログアウトを無効化（パフォーマンス向上）
+    
+    # レジストリ接続テスト（デバッグ用）
+    - name: レジストリ接続テスト
+      run: |
+        echo "Testing registry connection..."
+        echo "Registry: ${{ env.REGISTRY }}"
+        echo "Image name: ${{ env.IMAGE_NAME }}"
+        echo "User: ${{ github.actor }}"
+        
+        # レジストリの認証状況を確認
+        docker system info | grep -i registry || true
     
     # ステップ4: イメージのメタデータ（タグ、ラベル等）を生成
     - name: メタデータ抽出
