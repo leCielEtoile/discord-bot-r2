@@ -1,6 +1,6 @@
 services:
   discord-bot:
-    image: ghcr.io/leCielEtoile/discord-bot-r2:latest
+    image: ghcr.io/lecieletoile/discord-bot-r2:latest
     
     # 🔧 開発時やカスタムビルドが必要な場合
     # build:
@@ -41,7 +41,7 @@ services:
       interval: 30s      # 30秒間隔でチェック
       timeout: 10s       # 10秒でタイムアウト
       retries: 3         # 3回失敗で異常判定
-      start_period: 10s  # 起動から10秒は猶予期間
+      start_period: 30s  # 起動から30秒は猶予期間(yt-dlpのダウンロードに時間がかかる可能性があるため)
 
 # 開発用プロファイル（ローカルビルド）
   discord-bot-dev:

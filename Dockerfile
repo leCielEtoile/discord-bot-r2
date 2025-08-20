@@ -14,7 +14,6 @@ LABEL stage=dependencies
 # ビルドに必要な最小限のシステムパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
@@ -40,20 +39,17 @@ RUN --mount=type=cache,target=/root/.cache/pip \
     --find-links https://wheel-index.org \
     -r requirements.txt
 
-# yt-dlpの最新版を直接ダウンロード
-RUN curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /install/bin/yt-dlp \
-    && chmod a+rx /install/bin/yt-dlp
-
 # 実行環境ステージ
 FROM base AS runtime
 
 # 実行時に必要な最小限のパッケージをインストール
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    curl \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# 依存関係ステージからPythonライブラリとyt-dlpをコピー
+# 依存関係ステージからPythonライブラリをコピー
 COPY --from=dependencies /install /usr/local
 
 # 環境設定
