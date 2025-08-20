@@ -121,9 +121,9 @@ jobs:
       uses: docker/setup-buildx-action@v3
       with:
         platforms: ${{ matrix.platform }}  # 現在のマトリックスのプラットフォームのみ
-        # ドライバーオプション
+        # 安定版を固定使用（2024年12月最新安定版）
         driver-opts: |
-          image=moby/buildkit:v0.16.0  # 安定版を固定使用（2024年12月最新安定版）
+          image=moby/buildkit:v0.16.0
     
     # ステップ3: GitHub Container Registryにログイン
     - name: Container Registry ログイン
