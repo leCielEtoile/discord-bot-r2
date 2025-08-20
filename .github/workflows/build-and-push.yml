@@ -14,16 +14,16 @@ on:
 # 全てのジョブで共通して使用する環境変数を定義
 env:
   REGISTRY: ghcr.io              # GitHub Container Registry（GitHubが提供するDockerレジストリ）
-  IMAGE_NAME: ${{ github.repository }}  # リポジトリ名をイメージ名として使用
+  IMAGE_NAME: lecielotoile/discord-bot-r2  # イメージ名（イメージ名は小文字でなければならないため、GitHubの制約に合わせて小文字に統一）
   # 共通設定を環境変数で一元管理することで、メンテナンス性を向上
   PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
   # キャッシュ戦略：GitHub ActionsとContainer Registryの両方を活用
   CACHE_FROM: |
     type=gha
-    type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+    type=registry,ref=ghcr.io/lecielotoile/discord-bot-r2:buildcache
   CACHE_TO: |
     type=gha,mode=max
-    type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+    type=registry,ref=ghcr.io/lecielotoile/discord-bot-r2:buildcache,mode=max
 
 # 実行される処理の単位（ジョブ）を定義
 jobs:
