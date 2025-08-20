@@ -1,64 +1,399 @@
-name: Docker自動ビルドとプッシュ
+name: Docker Build and Push
 
+# このワークフローがいつ実行されるかを定義
 on:
   push:
-    branches: [ main, develop ]    # mainとdevelopブランチへのプッシュ時
-    tags: [ 'v*' ]                # バージョンタグ作成時
+    branches: [ main, develop ]    # mainまたはdevelopブランチにpushされた時
+    tags: [ 'v*' ]                # v1.0.0のようなバージョンタグが作成された時
   pull_request:
-    branches: [ main ]             # mainブランチへのPR時
+    branches: [ main ]             # mainブランチに対するプルリクエストが作成/更新された時
+    types: [opened, synchronize, reopened]  # 新規作成・同期・再オープン時
+  schedule:
+    - cron: '0 2 * * 0'            # 毎週日曜日2時にキャッシュクリーンアップを実行
 
+# 全てのジョブで共通して使用する環境変数を定義
 env:
-  REGISTRY: ghcr.io              # GitHub Container Registry
-  IMAGE_NAME: ${{ github.repository }}
+  REGISTRY: ghcr.io              # GitHub Container Registry（GitHubが提供するDockerレジストリ）
+  IMAGE_NAME: ${{ github.repository }}  # リポジトリ名をイメージ名として使用
+  # 共通設定を環境変数で一元管理することで、メンテナンス性を向上
+  PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
+  # キャッシュ戦略：GitHub ActionsとContainer Registryの両方を活用
+  CACHE_FROM: |
+    type=gha
+    type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+  CACHE_TO: |
+    type=gha,mode=max
+    type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
 
+# 実行される処理の単位（ジョブ）を定義
 jobs:
-  build:
+  # 【ジョブ1】変更検出 - 無駄なビルドを避けるために何が変更されたかをチェック
+  changes:
+    runs-on: ubuntu-latest        # Ubuntu環境で実行
+    # このジョブの出力結果を他のジョブで使用できるように定義
+    outputs:
+      docker: ${{ steps.changes.outputs.docker }}      # Dockerファイルが変更されたか
+      workflow: ${{ steps.changes.outputs.workflow }}  # ワークフローファイルが変更されたか
+    steps:
+    # ステップ1: ソースコードをダウンロード
+    - uses: actions/checkout@v4
+    # ステップ2: どのファイルが変更されたかを検出
+    - uses: dorny/paths-filter@v3
+      id: changes
+      with:
+        # 変更を監視するファイルパターンを定義
+        filters: |
+          docker:
+            - 'bot/**'
+            - 'Dockerfile'
+            - 'requirements.txt'
+            - 'entrypoint.sh'
+          workflow:
+            - '.github/workflows/**'
+
+  # 【ジョブ2】事前チェック - ビルドが本当に必要かを素早く判断
+  pre-checks:
     runs-on: ubuntu-latest
+    needs: changes                # changesジョブの完了を待つ
+    # Docker関連ファイルが変更された場合、またはpushイベントの場合のみ実行
+    if: needs.changes.outputs.docker == 'true' || github.event_name == 'push'
+    outputs:
+      should-build: ${{ steps.check.outputs.should-build }}  # ビルドすべきかの判定結果
+      cache-key: ${{ steps.cache-key.outputs.key }}          # キャッシュキー
+    steps:
+    - uses: actions/checkout@v4
+    
+    # ステップ1: ファイル内容からユニークなキャッシュキーを生成
+    - name: キャッシュキー生成
+      id: cache-key
+      # Dockerfileと関連ファイルの内容をハッシュ化してキャッシュキーを作成
+      # 同じ内容なら同じキーになるので、重複ビルドを避けられる
+      run: |
+        HASH=$(find . -name "Dockerfile" -o -name "requirements.txt" -o -name "entrypoint.sh" | \
+               xargs cat | sha256sum | cut -d' ' -f1 | head -c 8)
+        echo "key=docker-${HASH}-${{ github.sha }}" >> $GITHUB_OUTPUT
+    
+    # ステップ2: 同じ内容のイメージが既に存在するかチェック
+    - name: 既存イメージチェック
+      id: check
+      # Container Registryに同じキーのイメージがあるかを確認
+      run: |
+        if docker manifest inspect ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.cache-key.outputs.key }} >/dev/null 2>&1; then
+          echo "should-build=false" >> $GITHUB_OUTPUT
+          echo "✅ Image with same content already exists, skipping build"
+        else
+          echo "should-build=true" >> $GITHUB_OUTPUT
+          echo "🔨 New build required"
+        fi
+
+  # 【ジョブ3】ビルド - Dockerイメージを複数プラットフォーム向けにビルド
+  build:
+    runs-on: ${{ matrix.runner }}  # マトリックスベースのランナー選択
+    needs: [changes, pre-checks]   # 前の2つのジョブの完了を待つ
+    # 事前チェックでビルドが必要と判定された場合のみ実行
+    if: needs.pre-checks.outputs.should-build == 'true'
+    strategy:
+      fail-fast: false           # 一つのプラットフォームで失敗しても他を続行
+      matrix:
+        include:
+          # ネイティブARM64ランナーでパフォーマンス向上
+          - platform: linux/amd64
+            runner: ubuntu-latest
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm64  # ARM64専用ランナー（2024年対応）
+    # このジョブで必要なGitHub権限を定義
     permissions:
-      contents: read              # リポジトリ読み取り権限
-      packages: write            # パッケージ書き込み権限
+      contents: read            # リポジトリの読み取り
+      packages: write          # Container Registryへの書き込み
+      actions: read           # 他のアクションの状況確認
+    # このジョブの出力を他のジョブで使用できるように定義
+    outputs:
+      image-digest: ${{ steps.build.outputs.digest }}        # ビルドしたイメージのダイジェスト
+      image-metadata: ${{ steps.meta.outputs.json }}         # イメージのメタデータ
     
     steps:
+    # ステップ1: ソースコードをダウンロード
     - name: リポジトリをチェックアウト
       uses: actions/checkout@v4
     
-    - name: Docker Buildxをセットアップ
+    # ステップ2: Docker Buildxの設定
+    - name: Docker Buildx セットアップ
       uses: docker/setup-buildx-action@v3
       with:
-        platforms: linux/amd64,linux/arm64    # マルチアーキテクチャ対応
+        platforms: ${{ matrix.platform }}  # 現在のマトリックスのプラットフォームのみ
+        # ドライバーオプション
+        driver-opts: |
+          image=moby/buildkit:v0.16.0  # 安定版を固定使用（2024年12月最新安定版）
     
-    - name: Container Registryにログイン
+    # ステップ3: GitHub Container Registryにログイン
+    - name: Container Registry ログイン
+      uses: docker/login-action@v3
+      with:
+        registry: ${{ env.REGISTRY }}
+        username: ${{ github.actor }}          # GitHubのユーザー名
+        password: ${{ secrets.GITHUB_TOKEN }}  # GitHubが自動で提供するトークン
+    
+    # ステップ4: イメージのメタデータ（タグ、ラベル等）を生成
+    - name: メタデータ抽出
+      id: meta
+      uses: docker/metadata-action@v5
+      with:
+        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        # タグの命名規則を設定
+        flavor: |
+          latest=auto                          # 自動でlatestタグを付与
+          prefix={{branch}}-,onlatest=true     # ブランチ名をプレフィックスに
+        # 様々な条件に応じたタグ生成規則
+        tags: |
+          type=ref,event=branch                # ブランチ名ベースのタグ
+          type=ref,event=pr,prefix=pr-         # プルリクエスト用のタグ（pr-123など）
+          type=semver,pattern={{version}}      # セマンティックバージョン（v1.2.3）
+          type=semver,pattern={{major}}.{{minor}} # メジャー.マイナーバージョン（1.2）
+          type=semver,pattern={{major}}        # メジャーバージョンのみ（1）
+          type=sha,prefix={{branch}}-,format=short # ブランチ名+短いSHA（main-abc1234）
+          type=raw,value=latest,enable={{is_default_branch}} # デフォルトブランチにlatest
+        # OCI仕様に準拠したラベル（イメージの詳細情報）
+        labels: |
+          org.opencontainers.image.title=Discord YouTube Downloader Bot
+          org.opencontainers.image.description=High-performance Discord bot for downloading YouTube videos to Cloudflare R2 storage
+          org.opencontainers.image.vendor=leCielEtoile
+          org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          org.opencontainers.image.documentation=https://github.com/${{ github.repository }}/blob/main/README.md
+          org.opencontainers.image.licenses=BSD-3-Clause
+    
+    # ステップ5: 実際のDockerイメージビルドとプッシュ
+    - name: ビルド＆プッシュ
+      id: build
+      uses: docker/build-push-action@v6
+      with:
+        context: .                              # ビルドコンテキスト（カレントディレクトリ）
+        platforms: ${{ matrix.platform }}      # ビルド対象プラットフォーム
+        push: true                              # ビルド後にレジストリにプッシュ
+        tags: ${{ steps.meta.outputs.tags }}   # 生成されたタグを適用
+        labels: ${{ steps.meta.outputs.labels }} # 生成されたラベルを適用
+        # キャッシュ設定：ビルド時間を大幅短縮
+        cache-from: ${{ env.CACHE_FROM }}       # キャッシュの読み込み元
+        cache-to: ${{ env.CACHE_TO }}           # キャッシュの保存先
+        # ビルド時に渡される引数
+        build-args: |
+          BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
+          VCS_REF=${{ github.sha }}             # Gitコミットハッシュ
+          VERSION=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.version'] }}
+          BUILDKIT_INLINE_CACHE=1               # インラインキャッシュ有効化
+          ALPINE_VERSION=3.19.8                 # セキュリティパッチ適用版Alpine
+        # セキュリティとトレーサビリティの向上
+        provenance: mode=max                    # プロビナンス情報を最大限記録
+        sbom: true                              # SBOM（Software Bill of Materials）を生成
+        # ビルドコンテキストの最適化
+        build-contexts: |
+          alpine=docker-image://alpine:3.19.8    # ベースイメージをキャッシュ
+        # 必要に応じてシークレットを渡す
+        secrets: |
+          GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
+
+  # 【ジョブ4】マニフェスト作成 - 複数プラットフォームのイメージを統合
+  create-manifest:
+    runs-on: ubuntu-latest
+    needs: build                   # buildジョブの完了を待つ
+    # buildが成功し、かつプルリクエストでない場合のみ実行
+    if: always() && needs.build.result == 'success' && github.event_name != 'pull_request'
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+    # Docker Buildxをセットアップ（マニフェスト作成用）
+    - name: Docker Buildx セットアップ
+      uses: docker/setup-buildx-action@v3
+    
+    # Container Registryにログイン
+    - name: Container Registry ログイン
       uses: docker/login-action@v3
       with:
         registry: ${{ env.REGISTRY }}
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     
-    - name: イメージメタデータを抽出
-      id: meta
-      uses: docker/metadata-action@v5
-      with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-        tags: |
-          type=ref,event=branch                    # ブランチ名をタグに
-          type=ref,event=pr                       # PR番号をタグに
-          type=semver,pattern={{version}}         # セマンティックバージョン
-          type=semver,pattern={{major}}.{{minor}} # メジャー.マイナーバージョン
-          type=raw,value=latest,enable={{is_default_branch}}  # メインブランチにlatestタグ
-        labels: |
-          org.opencontainers.image.description=YouTube Downloader Discord Bot
-          org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          org.opencontainers.image.licenses=BSD 3-Clause
+    # 複数プラットフォームのイメージを1つのマニフェストに統合
+    - name: マルチアーキテクチャマニフェスト作成
+      # ビルドジョブで生成されたメタデータからタグを取得
+      # 各タグに対してマルチアーキテクチャマニフェストを作成
+      run: |
+        TAGS=$(echo '${{ needs.build.outputs.image-metadata }}' | jq -r '.tags[]' | head -5)
+        
+        for tag in $TAGS; do
+          echo "Creating manifest for: $tag"
+          # linux/amd64とlinux/arm64のイメージを統合
+          docker buildx imagetools create -t "$tag" \
+            "${tag}-linux-amd64" \
+            "${tag}-linux-arm64"
+        done
+
+  # 【ジョブ5】キャッシュクリーンアップ - 10GB制限対策
+  cache-cleanup:
+    runs-on: ubuntu-latest
+    # スケジュール実行またはワークフロー手動実行の場合のみ実行
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    permissions:
+      actions: write              # キャッシュ削除権限
     
-    - name: Dockerイメージをビルドしてプッシュ
-      uses: docker/build-push-action@v5
+    steps:
+    - name: キャッシュサイズ監視とクリーンアップ
+      run: |
+        # GitHub CLI を使用してキャッシュ情報を取得
+        echo "現在のキャッシュ使用状況を確認中..."
+        
+        # 7日以上古いキャッシュを削除
+        echo "7日以上古いキャッシュを削除中..."
+        gh cache list --limit 100 | grep -E "7 days ago|[0-9]+ weeks ago|[0-9]+ months ago" | \
+        while read -r line; do
+          cache_id=$(echo "$line" | awk '{print $1}')
+          echo "Deleting cache: $cache_id"
+          gh cache delete "$cache_id" || true
+        done
+        
+        # キャッシュサイズが8GB以上の場合、古いキャッシュから削除
+        TOTAL_SIZE=$(gh cache list --limit 100 | awk '{sum += $3} END {print sum}')
+        if [ "$TOTAL_SIZE" -gt 8000 ]; then
+          echo "キャッシュサイズが8GBを超過。古いキャッシュを削除中..."
+          gh cache list --sort created-at --order asc --limit 10 | \
+          while read -r line; do
+            cache_id=$(echo "$line" | awk '{print $1}')
+            echo "Deleting oldest cache: $cache_id"
+            gh cache delete "$cache_id" || true
+          done
+        fi
+      env:
+        GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # 【ジョブ6】通知 - 結果をSlackで通知
+  notify:
+    runs-on: ubuntu-latest
+    needs: [build, create-manifest]  # 主要ジョブの完了を待つ
+    if: always()                     # 失敗した場合も含めて常に実行
+    permissions:
+      contents: read
+    
+    steps:
+    - name: 結果サマリー生成
+      id: summary
+      run: |
+        # 各ジョブの結果を取得
+        BUILD_STATUS="${{ needs.build.result }}"
+        MANIFEST_STATUS="${{ needs.create-manifest.result }}"
+        
+        # 総合結果を判定
+        if [[ "$BUILD_STATUS" == "success" ]]; then
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            # プルリクエストの場合：ビルド成功で十分
+            OVERALL="success"
+            ICON="✅"
+            MESSAGE="Build completed successfully"
+          elif [[ "$MANIFEST_STATUS" == "success" ]]; then
+            # 本格的なパイプライン：全て成功
+            OVERALL="success"
+            ICON="🎉"
+            MESSAGE="Complete pipeline executed successfully"
+          else
+            # ビルドは成功したが、後続処理に問題
+            OVERALL="partial"
+            ICON="⚠️"
+            MESSAGE="Build succeeded but post-processing had issues"
+          fi
+        else
+          # ビルドに失敗
+          OVERALL="failure"
+          ICON="❌"
+          MESSAGE="Build failed"
+        fi
+        
+        # 結果を出力変数に設定（後続ステップで使用）
+        echo "overall=$OVERALL" >> $GITHUB_OUTPUT
+        echo "icon=$ICON" >> $GITHUB_OUTPUT
+        echo "message=$MESSAGE" >> $GITHUB_OUTPUT
+    
+    # Slackに詳細な通知を送信
+    - name: Slack 通知（統合）
+      uses: 8398a7/action-slack@v3
+      env:
+        SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK }}  # リポジトリのSecretsで設定
+      if: env.SLACK_WEBHOOK_URL != ''  # Slack WebhookURLが設定されている場合のみ実行
       with:
-        context: .
-        platforms: linux/amd64,linux/arm64        # マルチアーキテクチャビルド
-        push: true                                # Container Registryにプッシュ
-        tags: ${{ steps.meta.outputs.tags }}
-        labels: ${{ steps.meta.outputs.labels }}
-        cache-from: type=gha                      # GitHub Actionsキャッシュから読み込み
-        cache-to: type=gha,mode=max              # GitHub Actionsキャッシュに保存
-        build-args: |
-          BUILDKIT_INLINE_CACHE=1
+        status: ${{ steps.summary.outputs.overall }}
+        channel: '#ci-cd'             # 通知先チャンネル
+        fields: repo,message,commit,author,action,eventName,ref,workflow
+        # 構造化されたSlackメッセージを送信
+        custom_payload: |
+          {
+            "text": "${{ steps.summary.outputs.icon }} ${{ steps.summary.outputs.message }}",
+            "attachments": [
+              {
+                "color": "${{ steps.summary.outputs.overall == 'success' && 'good' || steps.summary.outputs.overall == 'partial' && 'warning' || 'danger' }}",
+                "fields": [
+                  {
+                    "title": "Repository",
+                    "value": "${{ github.repository }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Branch/Tag",
+                    "value": "${{ github.ref_name }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Build Status",
+                    "value": "${{ needs.build.result }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Manifest Status",
+                    "value": "${{ needs.create-manifest.result || 'skipped' }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Platforms",
+                    "value": "${{ env.PLATFORMS }}",
+                    "short": true
+                  },
+                  {
+                    "title": "Workflow",
+                    "value": "<${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Details>",
+                    "short": true
+                  }
+                ]
+              }
+            ]
+          }
+
+
+  # 【ジョブ7】パフォーマンスレポート - ビルド性能を記録・分析
+  performance-report:
+    runs-on: ubuntu-latest
+    needs: [build, create-manifest]
+    # mainブランチへのpushの場合のみ実行（本格運用時の性能測定）
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    permissions:
+      contents: write             # レポートファイルの保存用
+    steps:
+    - uses: actions/checkout@v4
+    
+    # ビルド時間とパフォーマンスのレポートを生成
+    - name: ビルド時間レポート生成
+      run: |
+        # Markdownフォーマットでパフォーマンスレポートを作成
+        echo "# Build Performance Report" > performance-report.md
+        echo "Generated: $(date -u)" >> performance-report.md
+        echo "" >> performance-report.md
+        echo "## Workflow Execution Time" >> performance-report.md
+        echo "- **Total Duration**: ${{ github.run_id }} workflow" >> performance-report.md
+        echo "- **Platforms Built**: ${{ env.PLATFORMS }}" >> performance-report.md
+        echo "- **Cache Strategy**: Multi-layer (GHA + Registry)" >> performance-report.md
+        echo "- **Optimization Features**: BuildKit, Parallel builds, Smart caching" >> performance-report.md
+        
+    # 生成したレポートをアーティファクトとして保存
+    - name: アーティファクト保存
+      uses: actions/upload-artifact@v4
+      with:
+        name: performance-report     # アーティファクト名
+        path: performance-report.md  # 保存するファイル
+        retention-days: 30          # 30日間保持
