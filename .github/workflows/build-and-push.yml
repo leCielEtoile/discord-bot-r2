@@ -201,9 +201,6 @@ jobs:
         # ビルドコンテキストの最適化
         build-contexts: |
           alpine=docker-image://alpine:3.19.8    # ベースイメージをキャッシュ
-        # 必要に応じてシークレットを渡す
-        secrets: |
-          GIT_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
 
   # 【ジョブ4】マニフェスト作成 - 複数プラットフォームのイメージを統合
   create-manifest:
