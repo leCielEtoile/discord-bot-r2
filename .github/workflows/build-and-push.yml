@@ -148,7 +148,6 @@ jobs:
         # タグの命名規則を設定
         flavor: |
           latest=auto                          # 自動でlatestタグを付与
-          prefix={{branch}}-,onlatest=true     # ブランチ名をプレフィックスに
         # 様々な条件に応じたタグ生成規則
         tags: |
           type=ref,event=branch                # ブランチ名ベースのタグ
