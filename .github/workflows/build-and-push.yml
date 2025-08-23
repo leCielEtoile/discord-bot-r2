@@ -17,6 +17,9 @@ env:
   IMAGE_NAME: lecielotoile/discord-bot-r2  # イメージ名（イメージ名は小文字でなければならないため、GitHubの制約に合わせて小文字に統一）
   # 共通設定を環境変数で一元管理することで、メンテナンス性を向上
   PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
+
+  BUILDKIT_PROGRESS: plain    # 詳細で一貫性のあるログ出力
+  
   # キャッシュ戦略：GitHub ActionsとContainer Registryの両方を活用
   CACHE_FROM: |
     type=gha
@@ -135,17 +138,6 @@ jobs:
         username: ${{ github.actor }}          # GitHubのユーザー名
         password: ${{ secrets.GITHUB_TOKEN }}  # GitHubが自動で提供するトークン
         logout: false                          # ログアウトを無効化（パフォーマンス向上）
-    
-    # レジストリ接続テスト（デバッグ用）
-    - name: レジストリ接続テスト
-      run: |
-        echo "Testing registry connection..."
-        echo "Registry: ${{ env.REGISTRY }}"
-        echo "Image name: ${{ env.IMAGE_NAME }}"
-        echo "User: ${{ github.actor }}"
-        
-        # レジストリの認証状況を確認
-        docker system info | grep -i registry || true
     
     # ステップ4: イメージのメタデータ（タグ、ラベル等）を生成
     - name: メタデータ抽出
