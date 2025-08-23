@@ -14,7 +14,7 @@ on:
 # 全てのジョブで共通して使用する環境変数を定義
 env:
   REGISTRY: ghcr.io              # GitHub Container Registry（GitHubが提供するDockerレジストリ）
-  IMAGE_NAME: lecielotoile/discord-bot-r2  # イメージ名（イメージ名は小文字でなければならないため、GitHubの制約に合わせて小文字に統一）
+  IMAGE_NAME: leCielEtoile/discord-bot-r2  # イメージ名
   # 共通設定を環境変数で一元管理することで、メンテナンス性を向上
   PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
 
