@@ -23,10 +23,8 @@ env:
   # キャッシュ戦略：GitHub ActionsとContainer Registryの両方を活用
   CACHE_FROM: |
     type=gha
-    type=registry,ref=ghcr.io/lecielotoile/discord-bot-r2:buildcache
   CACHE_TO: |
     type=gha,mode=max
-    type=registry,ref=ghcr.io/lecielotoile/discord-bot-r2:buildcache,mode=max
 
 # 実行される処理の単位（ジョブ）を定義
 jobs:
