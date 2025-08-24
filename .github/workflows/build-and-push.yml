@@ -14,17 +14,10 @@ on:
 # 全てのジョブで共通して使用する環境変数を定義
 env:
   REGISTRY: ghcr.io              # GitHub Container Registry（GitHubが提供するDockerレジストリ）
-  IMAGE_NAME: leCielEtoile/discord-bot-r2  # イメージ名
-  # 共通設定を環境変数で一元管理することで、メンテナンス性を向上
+  IMAGE_NAME: ${{ github.repository }}  # イメージ名
   PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
 
   BUILDKIT_PROGRESS: plain    # 詳細で一貫性のあるログ出力
-  
-  # キャッシュ戦略：GitHub ActionsとContainer Registryの両方を活用
-  CACHE_FROM: |
-    type=gha
-  CACHE_TO: |
-    type=gha,mode=max
 
 # 実行される処理の単位（ジョブ）を定義
 jobs:
@@ -174,9 +167,9 @@ jobs:
         push: true                              # ビルド後にレジストリにプッシュ
         tags: ${{ steps.meta.outputs.tags }}   # 生成されたタグを適用
         labels: ${{ steps.meta.outputs.labels }} # 生成されたラベルを適用
-        # キャッシュ設定：ビルド時間を大幅短縮
-        cache-from: ${{ env.CACHE_FROM }}       # キャッシュの読み込み元
-        cache-to: ${{ env.CACHE_TO }}           # キャッシュの保存先
+        # キャッシュ設定
+        cache-from: type=gha                      # GitHub Actionsキャッシュから読み込み
+        cache-to: type=gha,mode=max              # GitHub Actionsキャッシュに保存
         # ビルド時に渡される引数
         build-args: |
           BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
@@ -187,9 +180,6 @@ jobs:
         # セキュリティとトレーサビリティの向上
         provenance: mode=max                    # プロビナンス情報を最大限記録
         sbom: true                              # SBOM（Software Bill of Materials）を生成
-        # ビルドコンテキストの最適化
-        build-contexts: |
-          alpine=docker-image://alpine:3.19.8    # ベースイメージをキャッシュ
 
   # 【ジョブ4】マニフェスト作成 - 複数プラットフォームのイメージを統合
   create-manifest:
