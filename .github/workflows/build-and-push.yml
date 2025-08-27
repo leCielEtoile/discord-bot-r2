@@ -144,8 +144,6 @@ jobs:
           type=ref,event=branch                # ブランチ名ベースのタグ
           type=ref,event=pr,prefix=pr-         # プルリクエスト用のタグ（pr-123など）
           type=semver,pattern={{version}}      # セマンティックバージョン（v1.2.3）
-          type=semver,pattern={{major}}.{{minor}} # メジャー.マイナーバージョン（1.2）
-          type=semver,pattern={{major}}        # メジャーバージョンのみ（1）
           type=sha,prefix={{branch}}-,format=short # ブランチ名+短いSHA（main-abc1234）
           type=raw,value=latest,enable={{is_default_branch}} # デフォルトブランチにlatest
         # OCI仕様に準拠したラベル（イメージの詳細情報）
