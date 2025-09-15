@@ -165,9 +165,13 @@ jobs:
         push: true                              # ビルド後にレジストリにプッシュ
         tags: ${{ steps.meta.outputs.tags }}   # 生成されたタグを適用
         labels: ${{ steps.meta.outputs.labels }} # 生成されたラベルを適用
-        # キャッシュ設定
-        cache-from: type=gha                      # GitHub Actionsキャッシュから読み込み
-        cache-to: type=gha,mode=max              # GitHub Actionsキャッシュに保存
+        # キャッシュ設定をレジストリベースに変更し、GHAキャッシュにはignore-error=trueを追加
+        cache-from: |
+          type=gha
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache
+        cache-to: |
+          type=gha,mode=max,ignore-error=true
+          type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache,mode=max
         # ビルド時に渡される引数
         build-args: |
           BUILD_DATE=${{ fromJSON(steps.meta.outputs.json).labels['org.opencontainers.image.created'] }}
