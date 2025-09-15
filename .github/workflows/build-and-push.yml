@@ -14,7 +14,7 @@ on:
 # 全てのジョブで共通して使用する環境変数を定義
 env:
   REGISTRY: ghcr.io              # GitHub Container Registry（GitHubが提供するDockerレジストリ）
-  IMAGE_NAME: ${{ github.repository }}  # イメージ名
+  IMAGE_NAME: ${{ github.repository_owner }}/${{ github.event.repository.name }}  # イメージ名
   PLATFORMS: linux/amd64,linux/arm64    # ビルド対象のプラットフォーム（Intel/AMD64とARM64）
 
   BUILDKIT_PROGRESS: plain    # 詳細で一貫性のあるログ出力
@@ -130,12 +130,20 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}  # GitHubが自動で提供するトークン
         logout: false                          # ログアウトを無効化（パフォーマンス向上）
     
+    # 小文字変換されたイメージ名を環境変数に設定
+    - name: イメージ名を小文字に変換
+      id: image-name
+      run: |
+        IMAGE_NAME_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+        echo "name=${IMAGE_NAME_LOWER}" >> $GITHUB_OUTPUT
+        echo "registry-cache-ref=${{ env.REGISTRY }}/${IMAGE_NAME_LOWER}:buildcache" >> $GITHUB_OUTPUT
+    
     # ステップ4: イメージのメタデータ（タグ、ラベル等）を生成
     - name: メタデータ抽出
       id: meta
       uses: docker/metadata-action@v5
       with:
-        images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+        images: ${{ env.REGISTRY }}/${{ steps.image-name.outputs.name }}
         # タグの命名規則を設定
         flavor: |
           latest=auto                          # 自動でlatestタグを付与
